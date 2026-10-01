@@ -175,18 +175,18 @@ static int run(const uw_fb *fb, const uw_rast_svert *v,
 
         if (fb && texels && row >= 0 && row < fb->n_rows) {
             /* DX is u as 8.8 in ONE WORD, AX:BP is v as 16.16, and DI is a
-             * word too -- all three wrap, and the span is drawn with
-             * `movsb`, so only DI advances. */
+             * word too in the original. Keep texture coordinates wrapping,
+             * but widen the host destination for views larger than 64K. */
             uint16_t u = (uint16_t)hi16(left.u);
             uint32_t vv = (uint32_t)left.v;
-            uint16_t di = (uint16_t)(fb->row[row] + (uint16_t)lx);
+            uint32_t di = fb->row[row] + (uint16_t)lx;
             int k;
             for (k = 0; k < count; k++) {
                 uint32_t off = (uint32_t)((uint16_t)(vv >> 16) & tex->v_mask)
                              + (uint32_t)(u >> 8);
                 if (di < fb->size && off < n_texels)
                     fb->pixels[di] = texels[off];
-                di = (uint16_t)(di + 1);
+                di++;
                 u = (uint16_t)(u + (uint16_t)du);
                 vv += (uint32_t)dv;
             }
@@ -444,7 +444,7 @@ void uw_gfx_texture_poly_wall(const uw_fb *fb, const uw_rast_svert *v, int n,
              * from BP whether or not 07f2 loaded it (FOUR above). */
             uint32_t vv = ((uint32_t)bp << 16) | (uint16_t)left.v;
             int draw = row >= 0 && row < fb->n_rows;
-            uint16_t di = draw ? (uint16_t)(fb->row[row] + (uint16_t)lx) : 0;
+            uint32_t di = draw ? fb->row[row] + (uint16_t)lx : 0;
             int k;
             for (k = 0; k < count; k++) {
                 int col = lx + k;
@@ -454,7 +454,7 @@ void uw_gfx_texture_poly_wall(const uw_fb *fb, const uw_rast_svert *v, int n,
                     if (di < fb->size && off < n_texels)
                         fb->pixels[di] = texels[off];
                 }
-                di = (uint16_t)(di + 1);
+                di++;
                 vv += (uint32_t)dv;
             }
             bp = (uint16_t)vv;

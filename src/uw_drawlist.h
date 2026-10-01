@@ -147,7 +147,7 @@ typedef struct {
     uint8_t        image[0x40000];        /* load_texture_image's: an arena
                                            * of every load's copy */
     size_t         image_used;
-    uint8_t        ucol[256];             /* the wall mapper's columns */
+    uint8_t        ucol[512];             /* the wall mapper's columns */
     int32_t        wall_dv;               /* its span v step */
     uw_rast_svert  sv[UW_CLIP_MAX];
     long           executed;              /* opcodes run */

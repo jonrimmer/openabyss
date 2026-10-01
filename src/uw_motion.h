@@ -100,6 +100,9 @@ typedef struct {
                               * __rover, the words in the runtime library's
                               * code segment that farmalloc keeps */
     uint8_t  farheap_given;  /* farheap was given */
+    int      view_output_width, view_output_height; /* immersive window aspect */
+    int8_t   immersive_forward, immersive_strafe; /* WASD axes, -1..1 */
+    uint8_t  immersive;      /* host: free look, left-button combat, no view marks */
     uint8_t  view_unknown;   /* the view was presented in the pass where the
                               * port does not draw it: over the view the
                               * cursor's save area is what cursor_blit_in_view
@@ -344,6 +347,10 @@ void uw_motion_action_combat(uw_motion *m, int16_t cell);
 /* action_combat itself: the cell worked out of the pending
  * event's position in the view, for a host that delivers the click. */
 void uw_motion_action_combat_click(uw_motion *m);
+/* Host controls for the UI-free dungeon view; pitch stays within +/-0x1000. */
+void uw_motion_free_look(uw_motion *m, int yaw, int pitch);
+void uw_motion_enter_combat(uw_motion *m);
+void uw_motion_context_action(uw_motion *m);
 
 /* game_ending_sequence, event 10 (0x400): while
  * trap_pending_code is 0 and the ritual counter is 0, the Slasher stage --

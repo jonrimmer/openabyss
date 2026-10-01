@@ -210,7 +210,12 @@ static void apply_projection(uw_rast_frame *f) {
     ww(r, 0x1614, rw(r, 0x1608));
     ww(r, 0x1616, rw(r, 0x160a));
     ww(r, 0x1618, rw(r, 0x160c));
-    if (aspect >= 0) {
+    /* Match the physical viewport rather than the intermediate framebuffer.
+     * Landscape windows retain vertical FOV and gain horizontal FOV. */
+    if (f->output_width > 0 && f->output_height > 0) {
+        xs = (int32_t)((uint32_t)f->output_width << 16);
+        ys = (int32_t)((uint32_t)f->output_height << 16);
+    } else if (aspect >= 0) {
         xs = (int32_t)((uint32_t)((int32_t)aspect * rs(r, 0x26b2)) << 1);
         ys = (int32_t)((uint32_t)rw(r, 0x26b0) << 16);
     } else {

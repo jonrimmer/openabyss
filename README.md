@@ -99,6 +99,18 @@ timing. The game's own keys are the original's: the letters walk and turn,
 the keypad glides the cursor, F1..F10 and the Ctrl keys open panels, Alt-q
 writes a screenshot (`uwpicNNN.png` in the working directory), Alt-x quits.
 
+**Tab** toggles a view that fills the window and hides the interface. The
+3D renderer doubles its resolution to 344 × 226 in this mode. The camera
+matches the window's aspect ratio, showing more horizontally in wide windows
+without stretching or cropping the view. Combat is automatic: move the mouse to look around (up and down stay
+within the original limits), hold the left mouse button to charge an attack
+and release it to strike. Right-click uses the object or door at the centre
+of the screen, or starts a conversation with an NPC. WASD moves forward, left, backward and
+right; strafing uses 75% of forward speed. Diagonal movement is capped at
+forward speed. Panel shortcuts still work. Conversations and dialogs show their usual UI;
+closing them resumes the full-window view. Alt-Enter still controls whether
+the window itself is full screen.
+
 **Saves** go where the original keeps them, `SAVE1`..`SAVE4` beside the
 game's files, when that directory is writable, and otherwise to SDL's
 per-user data directory; `--saves DIR` puts them elsewhere. They are the

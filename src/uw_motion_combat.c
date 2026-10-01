@@ -1243,7 +1243,8 @@ void combat_swing(uw_motion *m, int16_t cell) {
         if (m->keys_b && rw(ds, SWING_BUTTON) < 0x80) held = m->keys_b[rw(ds, SWING_BUTTON)] != 0;
         else held = m->keys ? m->keys[(uint16_t)(rw(ds, KEY_STATE_PTR) + rw(ds, SWING_BUTTON))] != 0 : 0;
     }
-    held = held ? 1 : (mouse_sample_buttons(m) & 2) != 0;
+    held = m->immersive ? (mouse_sample_buttons(m) & 1) != 0
+                        : held ? 1 : (mouse_sample_buttons(m) & 2) != 0;
     state = rs(ds, SWING_STATE);
     if (state > 0) return;
     if (state == 0) {

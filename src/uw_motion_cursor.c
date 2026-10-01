@@ -188,7 +188,7 @@ static void weapon_draw(uw_motion *m, uint8_t *buf, uint8_t *bmask) {
 
 static void weapon_composite(uw_motion *m, uint8_t *buf, uint8_t *bmask) {
     weapon_draw(m, buf, bmask);
-    weapon_marks(m, buf, bmask);
+    if (!m->immersive) weapon_marks(m, buf, bmask);
 }
 
 void uw_motion_weapon_composite(uw_motion *m, uint8_t *buf, uint8_t *bmask) {
@@ -233,7 +233,7 @@ void uw_motion_view_present(uw_motion *m, const uint8_t *view, const uint8_t *ma
             buf[y * VW + x] = view[y * 320 + x];
             bmask[y * VW + x] = mask[y * 320 + x];
         }
-    if (ds[VIEW_VIEWPORT_DIRTY]) weapon_composite(m, buf, bmask);
+    if (ds[VIEW_VIEWPORT_DIRTY] && !m->immersive) weapon_composite(m, buf, bmask);
     if (vx + vw < x1 || x2 < vx || y1 < vy - vh || vy < y2) {
         ds[VIEW_MODE] = 0;
     } else {

@@ -260,6 +260,11 @@ void uw_motion_keyboard_drain(uw_motion *m) {
 }
 
 void uw_motion_input_key(uw_motion *m, uint16_t code, uint16_t index) {
+    uint16_t scan = index & 0x7f;
+    /* WASD is sampled continuously by the immersive movement path. In
+     * particular, shifted A/D must not invoke the original step/turn keys. */
+    if (m->immersive && !(code & 0x300)
+        && (scan == 0x11 || scan == 0x1f || scan == 0x1e || scan == 0x20)) return;
     uint8_t *ds = m->ds;
     uint16_t ev = rw(ds, 0x00e2), table = rw(ds, 0x24b4);
     int16_t i;
@@ -312,4 +317,28 @@ void uw_motion_input_wait_end(uw_motion *m) {
 
 void uw_motion_action_combat(uw_motion *m, int16_t cell) {
     combat_swing(m, cell);
+}
+
+/* Relative mouse angles use the same camera cells as the original keys.
+ * Keep the player object's facing in sync for movement and combat queries. */
+void uw_motion_free_look(uw_motion *m, int yaw, int pitch) {
+    uint8_t *ds = m->ds;
+    uint16_t pa = ds[0x0762] ? 0x358e : VIEW_PITCH;
+    int angle = rs(ds, pa) + pitch;
+    if (angle < -0x1000) angle = -0x1000;
+    if (angle > 0x1000) angle = 0x1000;
+    ww(ds, pa, (uint16_t)angle);
+    if (ds[0x0762]) {
+        ww(ds, 0x358c, (uint16_t)(rw(ds, 0x358c) + yaw));
+    } else {
+        uint16_t h = (uint16_t)(rw(ds, PLAYER_HEADING) + yaw);
+        uint16_t obj = rw(ds, TRACKED_OBJECT), rec = rw(ds, PLAYER_RECORD_PTR);
+        ww(ds, PLAYER_HEADING, h);
+        ww(ds, (uint16_t)(rec + 0x5a), h);
+        ww(m->lseg, (uint16_t)(obj + 2),
+           (uint16_t)((rw(m->lseg, (uint16_t)(obj + 2)) & 0xfc7f) | ((h >> 13) << 7)));
+        m->lseg[(uint16_t)(obj + 0x18)] =
+            (uint8_t)((m->lseg[(uint16_t)(obj + 0x18)] & 0xe0) | ((h >> 8) & 0x1f));
+    }
+    ww(ds, PENDING_EVENTS, (uint16_t)(rw(ds, PENDING_EVENTS) | 2));
 }

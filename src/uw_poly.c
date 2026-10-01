@@ -135,7 +135,8 @@ long uw_gfx_fill_span_list(const uw_fb *fb, uw_spans *s, int y,
     long n = 0;
     if (!fb || !fb->pixels || !fb->row) return 0;
     for (;; y--) {
-        uint16_t w, base, at, count;
+        uint16_t w, count;
+        uint32_t base, at;
         int16_t l, r, c;
         if (!in_table(y)) { s->overrun++; break; }
         w = s->row[y - UW_SPAN_Y_MIN];
@@ -144,12 +145,12 @@ long uw_gfx_fill_span_list(const uw_fb *fb, uw_spans *s, int y,
         base = fb->row[w];
         l = s->left[y - UW_SPAN_Y_MIN];
         r = s->right[y - UW_SPAN_Y_MIN];
-        at = (uint16_t)(base + (uint16_t)l);
+        at = base + (uint16_t)l;
         c = (int16_t)((uint16_t)r - (uint16_t)l + 1);  /* sub; neg; inc */
         if (c >= 0) {
             count = (uint16_t)c;
         } else {                               /* js: from right + 1 */
-            at = (uint16_t)(at + (uint16_t)c);
+            at = (uint32_t)((int32_t)at + c);
             count = (uint16_t)(1 - c);
         }
         while (count--) {
@@ -390,16 +391,17 @@ built:
     /* 320d: the list, terminated, through gfx_fill_span_list. */
     if (!fb || !fb->pixels || !fb->row) return 0;
     for (k = 0; k < ns; k++) {
-        uint16_t w = (uint16_t)sp[k].row, at, cnt;
+        uint16_t w = (uint16_t)sp[k].row, cnt;
+        uint32_t at;
         int16_t c;
         if (w & 0x8000) break;                    /* shl ax,1; jb */
         if ((int)w >= fb->n_rows) break;
-        at = (uint16_t)(fb->row[w] + (uint16_t)sp[k].x1);
+        at = fb->row[w] + (uint16_t)sp[k].x1;
         c = (int16_t)((uint16_t)sp[k].x2 - (uint16_t)sp[k].x1 + 1);
         if (c >= 0) {
             cnt = (uint16_t)c;
         } else {
-            at = (uint16_t)(at + (uint16_t)c);
+            at = (uint32_t)((int32_t)at + c);
             cnt = (uint16_t)(1 - c);
         }
         while (cnt--) {

@@ -316,7 +316,7 @@ static void resolve_pair(uw_vl *v, uint16_t *pp, uint16_t *pcell) {
  * position within it, aimed 0x2040 either side of the view. */
 static void setup_frustum(uw_vl *v) {
     int16_t s, c;
-    uint16_t e;
+    uint16_t e, half = v->frustum_half_angle ? v->frustum_half_angle : 0x2040;
     if ((v->level[mw(v, 0x2cfa)] & 0xf) == 0) {         /* the eye is in rock */
         setb(v, 0x2e02, 0xf);
         return;
@@ -332,10 +332,10 @@ static void setup_frustum(uw_vl *v) {
         setw(v, (uint16_t)(e + 0xb), mw(v, 0x2cfc));
         setw(v, (uint16_t)(e + 0xd), 0x28b0);
     }
-    uw_sincos_lerp((uint16_t)(vsw(v, 0x2c) + 0x2040), &s, &c);
+    uw_sincos_lerp((uint16_t)(vsw(v, 0x2c) + half), &s, &c);
     setw(v, 0x2d12, (uint16_t)(s >> 4));
     setw(v, 0x2d14, (uint16_t)(c >> 4));
-    uw_sincos_lerp((uint16_t)(vsw(v, 0x2c) + 0xdfc0), &s, &c);
+    uw_sincos_lerp((uint16_t)(vsw(v, 0x2c) - half), &s, &c);
     setw(v, 0x2d01, (uint16_t)(s >> 4));
     setw(v, 0x2d03, (uint16_t)(c >> 4));
 }

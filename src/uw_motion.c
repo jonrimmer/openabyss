@@ -54,6 +54,19 @@ static void speed_for_mode(uw_motion *m, uint16_t mode, uint16_t dt, int16_t *ta
     uint8_t *ds = m->ds;
     uint16_t di = rw(ds, PLAYER_HEADING);
     if (mode > 13) { ww(ds, MOVE_HEADING, di); return; }
+    if (m->immersive && mode == 1 && m->immersive_forward && m->immersive_strafe) {
+        int32_t forward = m->immersive_forward * (m->immersive_forward > 0
+            ? rs(ds, SPEED_MAX_FORWARD) : rs(ds, SPEED_MAX_BACKWARD));
+        int32_t side = m->immersive_strafe * (rs(ds, SPEED_MAX_FORWARD) * 3 / 4);
+        uint16_t length = uw_isqrt32((uint32_t)(forward * forward + side * side));
+        uint16_t angle = length ? (uint16_t)uw_atan2((int16_t)(side * 32767 / length),
+                                                   (int16_t)(forward * 32767 / length)) : 0;
+        /* Keep the 3:4 component ratio, without a faster diagonal run. */
+        *target = length > rw(ds, SPEED_MAX_FORWARD) ? rs(ds, SPEED_MAX_FORWARD) : (int16_t)length;
+        ww(ds, MOVE_HEADING, (uint16_t)(di + angle));
+        ww(ds, HEADING_OFFSET, m->immersive_strafe > 0 ? 1 : 0xffff);
+        return;
+    }
     switch (mode) {
     case 0:                                         /* d31: no heading stored */
         *target = 0;
@@ -62,18 +75,21 @@ static void speed_for_mode(uw_motion *m, uint16_t mode, uint16_t dt, int16_t *ta
         ww(ds, PLAYER_HEADING, (uint16_t)(rw(ds, PLAYER_HEADING) + heading_turn(ds, dt)));
         di = rw(ds, PLAYER_HEADING);
         ww(ds, MOVE_HEADING, di);
-        *target = (int16_t)((int16_t)(uint16_t)((rs(ds, FORWARD_INPUT) >> 2)
-                                                * rs(ds, SPEED_MAX_FORWARD)) / 32);
+        *target = m->immersive ? (m->immersive_forward > 0 ? rs(ds, SPEED_MAX_FORWARD) : 0)
+            : (int16_t)((int16_t)(uint16_t)((rs(ds, FORWARD_INPUT) >> 2)
+                                            * rs(ds, SPEED_MAX_FORWARD)) / 32);
         ww(ds, HEADING_OFFSET, 0);
         break;
     case 10:                                        /* c4d */
         di = (uint16_t)(di + 0x4000);
-        *target = rs(ds, SPEED_MAX_STRAFE);
+        *target = m->immersive ? (int16_t)(rs(ds, SPEED_MAX_FORWARD) * 3 / 4)
+                               : rs(ds, SPEED_MAX_STRAFE);
         ww(ds, HEADING_OFFSET, 1);
         break;
     case 9:                                         /* c5f */
         di = (uint16_t)(di - 0x4000);
-        *target = rs(ds, SPEED_MAX_STRAFE);
+        *target = m->immersive ? (int16_t)(rs(ds, SPEED_MAX_FORWARD) * 3 / 4)
+                               : rs(ds, SPEED_MAX_STRAFE);
         ww(ds, HEADING_OFFSET, 0xffff);
         break;
     case 8:                                         /* c71 */
@@ -524,8 +540,31 @@ static void movement_mode_from_keys(uw_motion *m) {
     int i;
     ww(ds, FORWARD_INPUT, 0);
     ww(ds, TURN_INPUT, 0);
+    m->immersive_forward = m->immersive_strafe = 0;
+    if (m->immersive) ww(ds, MOVEMENT_MODE, 0);
     if (!k) {
         UW_NOT_CARRIED(m->not_carried);
+        return;
+    }
+    if (m->immersive) {
+        uint16_t state = rw(ds, KEY_STATE_PTR);
+        int forward, side;
+        /* Read physical keys independently of Shift / Caps Lock. Modified
+         * Ctrl / Alt combinations remain available to the game's shortcuts. */
+        if (k[rw(ds, KEY_ALT_PTR)] || k[rw(ds, KEY_CTRL_PTR)]) return;
+        forward = (k[(uint16_t)(state + 0x11)] != 0) - (k[(uint16_t)(state + 0x1f)] != 0);
+        side = (k[(uint16_t)(state + 0x20)] != 0) - (k[(uint16_t)(state + 0x1e)] != 0);
+        m->immersive_forward = (int8_t)forward;
+        m->immersive_strafe = (int8_t)side;
+        if (forward) {
+            ww(ds, MOVEMENT_MODE, forward > 0 || side ? 1 : 8);
+            if (forward > 0) ww(ds, FORWARD_INPUT, 0x80);
+        } else if (side) ww(ds, MOVEMENT_MODE, side > 0 ? 10 : 9);
+        /* Preserve the original swim / flight controls on Q and E. */
+        if (!forward && !side && (ds[BLOCK_FLAGS] & 0x14)) {
+            if (k[(uint16_t)(state + 0x12)]) ww(ds, MOVEMENT_MODE, 12);
+            if (k[(uint16_t)(state + 0x10)]) ww(ds, MOVEMENT_MODE, 13);
+        }
         return;
     }
     shift = k[rw(ds, KEY_SHIFT_PTR)];
@@ -580,6 +619,7 @@ void movement_set_mode(uw_motion *m, int16_t mode) {
     uint8_t *ds = m->ds;
     uint16_t rec = rw(ds, PLAYER_RECORD_PTR), ev, buttons;
     int16_t w, h, x, y;
+    if (m->immersive && mode < 0) mode = 1;
     ds[MOVEMENT_FROM_KEYBOARD] = mode >= 0;
     if (mode >= 0) {
         movement_mode_from_keys(m);

@@ -70,7 +70,7 @@ static long spans(const uw_fb *fb, const span_rec *r, int n,
         uint16_t row = (uint16_t)r[k].row;
         int16_t x1 = r[k].x1, x2 = r[k].x2, s1 = r[k].s1, s2 = r[k].s2;
         int16_t count, left, sl, sr;
-        uint16_t di;
+        uint32_t di;
 
         if (row & 0x8000) break;                       /* shl ax,1; jb ret */
         if ((int)row >= fb->n_rows) continue;          /* the table ends */
@@ -82,7 +82,7 @@ static long spans(const uw_fb *fb, const span_rec *r, int n,
         } else {
             left = x1; sl = s1; sr = s2;
         }
-        di = (uint16_t)(fb->row[row] + (uint16_t)left);
+        di = fb->row[row] + (uint16_t)left;
         count = (int16_t)(count + 1);
         {
             int16_t delta = (int16_t)(uint16_t)((uint16_t)sr - (uint16_t)sl);
@@ -93,13 +93,13 @@ static long spans(const uw_fb *fb, const span_rec *r, int n,
                 uint8_t c = lit(light, (uint8_t)(sl & 0xff), mode->base,
                                 overrun);
                 int16_t fc = (int16_t)((uint16_t)r[k].x2 - (uint16_t)r[k].x1 + 1);
-                uint16_t at = (uint16_t)(fb->row[row] + (uint16_t)r[k].x1);
+                uint32_t at = fb->row[row] + (uint16_t)r[k].x1;
                 uint16_t cnt;
                 if (mode->colour) *mode->colour = c;
                 if (fc >= 0) {
                     cnt = (uint16_t)fc;
                 } else {
-                    at = (uint16_t)(at + (uint16_t)fc);
+                    at = (uint32_t)((int32_t)at + fc);
                     cnt = (uint16_t)(1 - fc);
                 }
                 while (cnt--) {

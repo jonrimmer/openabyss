@@ -3,6 +3,7 @@
  * callbacks, gr_load_door_textures, crit_pages_init,
  * lev_load_terrain, shade_set_level and set_render_detail. */
 #include "uw_scene.h"
+#include <math.h>
 #include "uw_crit.h"
 #include "uw_objprops.h"
 
@@ -450,7 +451,7 @@ static void dl_first(uw_scene *s) {
      * that has drawn keeps what its last such face left, and a detail-1
      * frame (which has none) inherits it as the original's does */
     m->poly_count = s->ever_drawn ? carried : rw(r, 0xb00c);
-    memcpy(m->ucol, s->gfx + 0x7f2, sizeof m->ucol);
+    memcpy(m->ucol, s->gfx + 0x7f2, 256);
     ri = rw(r, 0xb07c);
     m->rec_index = (ri >= 0xb07e && ri < 0xb07e + UW_DL_RECS * 8) ? (ri - 0xb07e) / 8 : 0;
     for (i = 0; i < UW_DL_RECS; i++) {
@@ -475,6 +476,7 @@ static void dl_first(uw_scene *s) {
     m->fixed_colour = s->gfx[0xdc3];
     m->fill_fn = rw(s->gfx, 0x4110);
     uw_spans_load(&m->spans, s->gfx);
+    if (s->view_height > 113) uw_spans_init(&m->spans);
     m->view_clip.left = 0;
     m->view_clip.top = 0;
     m->view_clip.right = (int16_t)(s->view_width - 1);
@@ -521,6 +523,12 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
     for (i = 0; i < UW_VL_ART && i < UW_DL_TEX; i++) v->art[i] = s->tex[i];
     v->shade = s->light;
     /* the pick map's replay keeps the draw's camera and column array */
+    v->frustum_half_angle = 0;
+    if (s->output_width > 0 && s->output_height > 0) {
+        double aspect = (double)s->output_width / s->output_height;
+        double tangent = s->projection_scale / 32767.0 * (aspect > 1.0 ? aspect : 1.0);
+        v->frustum_half_angle = (uint16_t)(atan(tangent) * (65536.0 / 6.283185307179586) + 64);
+    }
     v->spans = pick ? 0 : 2;
     v->pick = pick;
     if (pick) {
@@ -543,6 +551,8 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
     memcpy(s->rf.rast, s->rast, sizeof s->rf.rast);
     memcpy(s->rf.priv, s->priv, sizeof s->rf.priv);
     memcpy(s->rf.priv + 0x970, v->camera, sizeof v->camera);
+    s->rf.output_width = s->output_width;
+    s->rf.output_height = s->output_height;
     s->rf.view_width = (int16_t)s->view_width;
     s->rf.view_height = (int16_t)s->view_height;
     s->rf.unsupported = s->rf.saturated = 0;
@@ -565,7 +575,7 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
     }
     if (!pick) s->drawn++;
     for (e = 0; e < s->dl.n_events; e++) uw_dl_render_event(&s->dl, fb, e, 1);
-    if (!pick) uw_view_overlay_draw(s->overlay, fb);
+    if (!pick && !s->hide_overlay) uw_view_overlay_draw(s->overlay, fb);
     return s->dl.n_events;
 }
 

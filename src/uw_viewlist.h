@@ -74,6 +74,7 @@ typedef struct {
     const uint8_t *lprm;           /* the distance-light ramp */
     const uint8_t *art[UW_VL_ART]; /* each art slot's pixels, NULL if unloaded */
     const uint8_t *shade;          /* the 16 x 256 shade table */
+    uint16_t       frustum_half_angle; /* host override; zero: original 0x2040 */
     int            spans;          /* compute view_column_array -- the light
                                     * map from the shades radius, then
                                     * uw_vl_spans as view_render does --

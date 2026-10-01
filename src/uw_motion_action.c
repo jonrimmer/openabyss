@@ -798,3 +798,22 @@ void uw_motion_action_combat_click(uw_motion *m) {
     int16_t row = (int16_t)(rs(ds, (uint16_t)(ev + 2)) * 3 / (rs(ds, 0x7280) + 2));
     combat_swing(m, (int16_t)(col + row * 3 + 1));
 }
+
+/* Pick through the renderer at the centre, using the original reach,
+ * occlusion, use dispatch and conversation machinery. */
+void uw_motion_context_action(uw_motion *m) {
+    uint8_t *ds = m->ds;
+    uint16_t ev = rw(ds, 0x00e2), o;
+    if (rw(ds, ACTION_STATE_WORD)) return;
+    ww(ds, ev, (uint16_t)(rw(ds, VIEW_WIDTH_WORD) / 2));
+    ww(ds, (uint16_t)(ev + 2), (uint16_t)(rw(ds, 0x7280) / 2));
+    ww(ds, (uint16_t)(ev + 6), 2);
+    o = view_pick_object(m);
+    ww(ds, CURSOR_PICK_OBJECT, o);
+    ww(ds, (uint16_t)(CURSOR_PICK_OBJECT + 2), o ? rw(ds, (uint16_t)(MOBILE_BASE + 2)) : 0);
+    if (!o) return;
+    if (o < rw(ds, STATIC_BASE) && (rw(m->lseg, o) & 0x1c0) == 0x40) {
+        input_wait_button_release(m, 1);
+        m->talk_object = o;
+    } else action_use(m, 0);
+}

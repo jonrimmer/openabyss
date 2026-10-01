@@ -93,6 +93,9 @@ int  uw_palette_fade_step(uw_palette_fade *f);
 #define UW_VIEW_W 172
 #define UW_VIEW_H 113
 #define UW_VIEW_BYTES (UW_VIEW_W * UW_VIEW_H)
+#define UW_IMMERSIVE_W (UW_VIEW_W * 2)
+#define UW_IMMERSIVE_H (UW_VIEW_H * 2)
+#define UW_IMMERSIVE_BYTES (UW_IMMERSIVE_W * UW_IMMERSIVE_H)
 
 /* screen_fade_out and screen_fade_in push 12 and ignore the word their
  * callers pass -- perform_pending_teleport passes a variable and
@@ -105,7 +108,7 @@ typedef struct {
     int     i;            /* the next row to apply */
     int     out;          /* 1 forward (fading out), 0 backward */
     int     stage;        /* 0 not begun, 1 stepping, 2 the last frame done */
-    uint8_t saved[UW_VIEW_BYTES];   /* the EMS copy a backward wipe keeps */
+    uint8_t saved[UW_IMMERSIVE_BYTES];   /* the EMS copy a backward wipe keeps */
     size_t  saved_len;
 } uw_screen_wipe;
 

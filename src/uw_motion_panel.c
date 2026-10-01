@@ -754,6 +754,11 @@ static void weapon_draw(uw_motion *m) {
     if (ds[MUSIC_TRACK_PLAYING] < 5 || ds[MUSIC_TRACK_PLAYING] > 7) ds[MUSIC_TRACK_WANTED] = 8;
 }
 
+void uw_motion_enter_combat(uw_motion *m) {
+    weapon_draw(m);
+    ww(m->ds, 0x268c, 2);
+}
+
 /* weapon_stow, from the instructions: with the weapon drawn,
  * panel element 8 to 6, the stance cleared, the fight button drawn up unless
  * the options panel is open, no mode, combat_reset and

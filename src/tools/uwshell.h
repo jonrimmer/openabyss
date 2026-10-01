@@ -88,6 +88,10 @@ struct uw_shell {
     int            sound_forced;    /* --sound: on regardless, the saved game's switches too */
     int            fullscreen;      /* --fullscreen, Alt-Enter */
     int            vsync;           /* 0 on (the default), -1 --no-vsync */
+    int            immersive;       /* Tab: expand the dungeon view to the window */
+    int            context_click;   /* right-button edge, consumed by input_tick */
+    int            unfocused;       /* suspend capture until focus returns */
+    float          look_x, look_y;  /* fractional relative mouse angles */
     int            relative;        /* the host's pointer captured while a button walks in the view */
     int            objcheck;        /* --objcheck: objcheck_run over each level entered */
     uint16_t       objcheck_level;

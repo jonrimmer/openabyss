@@ -34,14 +34,15 @@
  *                       loop, which is what turns a v into a row
  *
  * The framebuffer is ES and a ROW TABLE: one word
- * per row, the offset of that row's first byte. It is a table rather than a
+ * per row, the offset of that row's first byte. The host widens these to
+ * support larger viewports. It is a table rather than a
  * multiply because the module draws into both a 320-wide page and a narrower
  * viewport buffer, and the table is how the caller says which.
  */
 typedef struct {
     uint8_t       *pixels;      /* ES, the destination */
     size_t         size;        /* its length, for the bounds check */
-    const uint16_t *row;        /* one offset per row */
+    const uint32_t *row;        /* host offsets can exceed the original 64K segment */
     int            n_rows;
 } uw_fb;
 

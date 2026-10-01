@@ -329,7 +329,7 @@ long uw_gfx_draw_sprite_rows(const uw_fb *fb, const uw_sprite_desc *d,
     last = 0xff;
     for (r = 0; r < rows; r++, row--) {
         uint8_t sr = (uint8_t)(acc >> 8);
-        uint16_t di;
+        uint32_t di;
         if (last != sr) {
             /* `mov al,dh; mul byte [0xdc2]` -- the stride is the width's low
              * byte -- plus the start the generator folded the clip into. */
@@ -341,7 +341,7 @@ long uw_gfx_draw_sprite_rows(const uw_fb *fb, const uw_sprite_desc *d,
             }
         }
         if (row >= 0 && row < fb->n_rows) {
-            di = (uint16_t)(fb->row[row] + (uint16_t)x);
+            di = fb->row[row] + (uint16_t)x;
             /* gfx_row_copy_translucent: 0 skipped, 0xfb..0xff through
              * XFER.DAT row code - 0xfb of the pixel beneath -- except the
              * LAST pixel, where such a code is skipped. */

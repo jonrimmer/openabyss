@@ -290,6 +290,12 @@ static void scene_camera(uw_motion *m) {
     if (m->render.masks) { uw_scene_masks(sc, m->render.mask); m->render.masks = 0; }
     if (m->render.shade) { uw_scene_shade_blank(sc, m->render.shade == 1); m->render.shade = 0; }
     if (m->render.floors) { uw_scene_floors(sc, ds + 0x717c); m->render.floors = 0; }
+    sc->output_width = m->immersive ? m->view_output_width : 0;
+    sc->output_height = m->immersive ? m->view_output_height : 0;
+    sc->hide_overlay = m->immersive;
+    if (sc->view_width != (m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W)) sc->drawn = 0;
+    sc->view_width = m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W;
+    sc->view_height = m->immersive ? UW_IMMERSIVE_H : UW_VIEW_H;
     uw_scene_place(sc, rw(ds, 0x2780), rw(ds, 0x2782), rw(ds, 0x2784), rw(ds, 0x727a), ds[0x7288 + 0xb5] >> 4, ds[0x1c50]);
     uw_scene_sway(sc, ds[0x3578], (int16_t)rw(ds, 0x3580), (int16_t)rw(ds, 0x3582), (int16_t)rw(ds, 0x3584),
                   (int16_t)rw(ds, 0x3586));
@@ -305,20 +311,25 @@ static void scene_camera(uw_motion *m) {
 }
 
 static const uint8_t *pick_map(void *user, uint8_t *ds) {
-    static uint8_t scratch[64000], map[0x5000];
-    static uint16_t rows320[200], rows174[200];
+    static uint8_t scratch[UW_IMMERSIVE_BYTES], high_map[UW_IMMERSIVE_BYTES], map[0x5000];
+    static uint32_t rows[UW_IMMERSIVE_H];
     uw_motion *m = user;
     uw_fb f;
     uint16_t count;
-    int i;
+    int i, x, y, scale;
     if (!scene_at(m)) return NULL;
-    for (i = 0; i < 200; i++) { rows320[i] = (uint16_t)(i * 320); rows174[i] = (uint16_t)(2 + i * 174); }
     scene_camera(m);
-    f.pixels = scratch; f.size = sizeof scratch; f.row = rows320; f.n_rows = 200;
+    scale = m->immersive ? 2 : 1;
+    for (i = 0; i < sc->view_height; i++) rows[i] = (uint32_t)(i * sc->view_width);
+    f.pixels = scratch; f.size = sizeof scratch; f.row = rows; f.n_rows = sc->view_height;
     if (uw_scene_draw(sc, &f) < 0) return NULL;
     memset(map, 0, sizeof map);
-    f.pixels = map; f.size = sizeof map; f.row = rows174; f.n_rows = 114;
+    memset(high_map, 0, sizeof high_map);
+    f.pixels = high_map; f.size = sizeof high_map;
     if (uw_scene_pick(sc, &f) < 0) return NULL;
+    for (y = 0; y < UW_VIEW_H; y++)
+        for (x = 0; x < UW_VIEW_W; x++)
+            map[2 + y * 174 + x] = high_map[y * scale * sc->view_width + x * scale];
     count = rw(sc->ds, 0x311e);
     for (i = 0; i < count && i < 0xc0; i++) {
         memcpy(ds + 0x2e1c + 2 * i, sc->ds + 0x2e1c + 2 * i, 2);
@@ -349,18 +360,20 @@ static const uint8_t *pick_map(void *user, uint8_t *ds) {
  * reached are the dark end of a corridor. Keeping them would trail light
  * wall texels across the dark while the view turned. */
 static uint8_t work_view[64000], work_all[64000];
+static uint8_t immersive_view[UW_IMMERSIVE_BYTES];
 
 /* dungeon_refresh_view: view_render -- the traversal,
  * cursor_poll, the list -- and view_present. */
 static void refresh_view(uw_motion *m) {
-    static uint8_t pa[64000];
-    static uint16_t rows[200];
-    int i, y;
+    static uint8_t pa[UW_IMMERSIVE_BYTES];
+    static uint32_t rows[UW_IMMERSIVE_H];
+    int i, x, y, width, height;
     uw_fb fa;
-    for (i = 0; i < 200; i++) rows[i] = (uint16_t)(i * 320);
     if (!scene_at(m)) { m->pixels_not_drawn++; return; }
     scene_camera(m);
-    fa.pixels = pa; fa.size = sizeof pa; fa.row = rows; fa.n_rows = 200;
+    width = sc->view_width; height = sc->view_height;
+    for (i = 0; i < height; i++) rows[i] = (uint32_t)(i * width);
+    fa.pixels = pa; fa.size = sizeof pa; fa.row = rows; fa.n_rows = height;
     /* gfx_clear_work_buffer, the first of gfx_execute_draw_list's four */
     memset(pa, 0, sizeof pa);
     /* automap_tiles: the view's own sweep marks them, and the
@@ -382,8 +395,11 @@ static void refresh_view(uw_motion *m) {
      * told the two apart while the buffer persisted, no longer says
      * anything the buffer does not */
     if (!work_all[0]) memset(work_all, 1, sizeof work_all);
+    if (m->immersive) memcpy(immersive_view, pa, sizeof immersive_view);
     for (y = 0; y < UW_VIEW_H; y++)
-        memcpy(work_view + y * 320, pa + y * 320, UW_VIEW_W);
+        for (x = 0; x < UW_VIEW_W; x++)
+            work_view[y * 320 + x] = pa[(y * (m->immersive ? 2 : 1)) * width
+                                       + x * (m->immersive ? 2 : 1)];
     uw_motion_view_present(m, work_view, work_all);
 }
 
@@ -588,7 +604,7 @@ static int usage(void) {
  * the port's stops there -- and the screen through the working palette,
  * each component shifted left by two as the original shifts it, written
  * as PNG where the original wrote a GIF. */
-static void screenshot_write(const uint8_t *screen, const uint8_t *pal) {
+static void screenshot_write_size(const uint8_t *screen, const uint8_t *pal, int width, int height) {
     char name[32];
     int n, i;
     FILE *f;
@@ -603,9 +619,9 @@ static void screenshot_write(const uint8_t *screen, const uint8_t *pal) {
         if (!(f = fopen(name, "rb"))) break;
         fclose(f);
     }
-    if (n == 512 || !(img = SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_RGB24))) return;
-    for (i = 0; i < 64000; i++) {
-        uint8_t *px = (uint8_t *)img->pixels + (i / 320) * img->pitch + (i % 320) * 3;
+    if (n == 512 || !(img = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_RGB24))) return;
+    for (i = 0; i < width * height; i++) {
+        uint8_t *px = (uint8_t *)img->pixels + (i / width) * img->pitch + (i % width) * 3;
         const uint8_t *c = pal + screen[i] * 3;
         px[0] = (uint8_t)(c[0] << 2); px[1] = (uint8_t)(c[1] << 2); px[2] = (uint8_t)(c[2] << 2);
     }
@@ -615,6 +631,10 @@ static void screenshot_write(const uint8_t *screen, const uint8_t *pal) {
     if (!SDL_SaveBMP(img, name)) fprintf(stderr, UW_PROGRAM ": %s: %s\n", name, SDL_GetError());
 #endif
     SDL_DestroySurface(img);
+}
+
+static void screenshot_write(const uint8_t *screen, const uint8_t *pal) {
+    screenshot_write_size(screen, pal, 320, 200);
 }
 
 /* The present at the bottom of the pass: the screen's indexes through the
@@ -650,6 +670,41 @@ static void show(const uint8_t *screen, const uint8_t *pal, uint32_t *frame,
     SDL_RenderPresent(ren);
 }
 
+/* The camera renders for the actual output aspect, so present its entire
+ * view without cropping. The intermediate page retains the doubled detail. */
+static void expand_view(const uint8_t *view, uint8_t page[640 * 400], SDL_Renderer *ren) {
+    int x, y;
+    (void)ren;
+    for (y = 0; y < 400; y++)
+        for (x = 0; x < 640; x++)
+            page[y * 640 + x] = view[(UW_IMMERSIVE_H - 1 - y * UW_IMMERSIVE_H / 400)
+                                      * UW_IMMERSIVE_W + x * UW_IMMERSIVE_W / 640];
+}
+
+static void show_immersive(const uint8_t *view, const uint8_t *pal,
+                           SDL_Renderer *ren, int screenshot) {
+    static uint8_t page[640 * 400];
+    static uint32_t frame[640 * 400];
+    static SDL_Texture *tex;
+    int i;
+    expand_view(view, page, ren);
+    if (screenshot) screenshot_write_size(page, pal, 640, 400);
+    for (i = 0; i < 640 * 400; i++) {
+        const uint8_t *c = pal + page[i] * 3;
+        frame[i] = (uint32_t)(c[0] * 255 / 63) << 16
+                 | (uint32_t)(c[1] * 255 / 63) << 8 | (uint32_t)(c[2] * 255 / 63);
+    }
+    if (!tex) {
+        tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
+        if (!tex) return;
+        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+    }
+    SDL_UpdateTexture(tex, NULL, frame, 640 * 4);
+    SDL_RenderClear(ren);
+    SDL_RenderTexture(ren, tex, NULL, NULL);
+    SDL_RenderPresent(ren);
+}
+
 /* the logical presentation's y for a screen row, and back */
 static float logical_y(float screen_y) { return present_aspect ? screen_y * 240.0f / 200.0f : screen_y; }
 static float screen_y_of(float logical) { return present_aspect ? logical * 200.0f / 240.0f : logical; }
@@ -669,7 +724,8 @@ static float screen_y_of(float logical) { return present_aspect ? logical * 200.
 static void screen_fade_run(uw_motion *m, int out, const uint8_t *light, const uint8_t *pal,
                             uint32_t *frame, SDL_Texture *tex, SDL_Renderer *ren) {
     enum { VX = 52, VTOP = 19, VW = UW_VIEW_W, VH = UW_VIEW_H };
-    static uint8_t view[UW_VIEW_BYTES];
+    static uint8_t view[UW_IMMERSIVE_BYTES];
+    size_t len = m->immersive ? UW_IMMERSIVE_BYTES : UW_VIEW_BYTES;
     uw_screen_wipe w;
     int x, y;
     if (!m->screen || !light) { UW_NOT_CARRIED(m->not_carried); return; }
@@ -681,15 +737,18 @@ static void screen_fade_run(uw_motion *m, int out, const uint8_t *light, const u
     for (y = 1; y < VH; y++)
         for (x = 0; x < VW; x++)
             view[y * VW + x] = m->screen[(VTOP + VH - 1 - y) * 320 + VX + x];
+    if (m->immersive) memcpy(view, immersive_view, len);
     uw_screen_fade_begin(&w, out);
-    while (uw_screen_fade_step(&w, view, sizeof view, light)) {
+    while (uw_screen_fade_step(&w, view, len, light)) {
         for (y = 1; y < VH; y++)
             for (x = 0; x < VW; x++) {
                 m->screen[(VTOP + VH - 1 - y) * 320 + VX + x] = view[y * VW + x];
                 if (m->screen_written) m->screen_written[(VTOP + VH - 1 - y) * 320 + VX + x] = 1;
             }
-        show(m->screen, pal, frame, tex, ren);
+        if (m->immersive) show_immersive(view, pal, ren, 0);
+        else show(m->screen, pal, frame, tex, ren);
     }
+    if (m->immersive) memcpy(immersive_view, view, len);
     /* the fade out ends with gfx_clear_work_buffer_thunk(0xf1) over the
      * buffer, which the next refresh clears again (through the
      * entry two bytes earlier), so nothing of it reaches a later frame */
@@ -767,6 +826,43 @@ static void set_mode(uw_shell *sh, int mode);
 static const uw_shell_mode *mode_row(int number);
 static void title_screen(uw_shell *sh, const char *file, int palette);
 
+/* Dialogs and other game modes retain their normal pointer and presentation.
+ * The preference survives them, so closing one resumes the dungeon view. */
+static void immersive_sync(uw_shell *sh) {
+    uw_motion *m = &sh->m;
+    int active = sh->immersive && sh->have_game && sh->mode == MODE_DUNGEON
+        && !sh->unfocused && !sh->options.active && !m->stack_ask
+        && !m->mantra_ask && !m->yesno_ask && !m->instrument;
+    if (active && sh->ren) {
+        int w, h;
+        if (SDL_GetRenderOutputSize(sh->ren, &w, &h) && w > 0 && h > 0
+            && (w != m->view_output_width || h != m->view_output_height)) {
+            m->view_output_width = w; m->view_output_height = h;
+            ww(sh->ds, 0x56aa, (uint16_t)(rw(sh->ds, 0x56aa) | 2));
+        }
+    }
+    if (active == m->immersive) return;
+    m->immersive = (uint8_t)active;
+    m->buttons = 0;
+    sh->context_click = 0;
+    sh->look_x = sh->look_y = 0;
+    ww(sh->ds, 0x0115, 0xffff);
+    sh->ds[0x011d] = 0;
+    if (sh->win && !sh->script) {
+        SDL_SetWindowRelativeMouseMode(sh->win, active != 0);
+        sh->relative = active;
+    }
+    if (sh->ren)
+        SDL_SetRenderLogicalPresentation(sh->ren, 320, present_aspect ? 240 : 200,
+            active ? SDL_LOGICAL_PRESENTATION_STRETCH : SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    if (active) {
+        uw_motion_enter_combat(m);
+        uw_motion_cursor_move(m, 52 + UW_VIEW_W / 2, 68 + UW_VIEW_H / 2);
+        ww(sh->ds, 0x0125, 0xffff); /* stop keypad cursor glide */
+    }
+    ww(sh->ds, 0x56aa, (uint16_t)(rw(sh->ds, 0x56aa) | 2));
+}
+
 /* ---- the host's events into the driver's state ---- */
 static void host_events(uw_shell *sh) {
     uw_motion *m = &sh->m;
@@ -778,6 +874,7 @@ static void host_events(uw_shell *sh) {
      * instrument down must not skip the next cutscene) */
     sh->input_edge = 0;
     sh->esc_edge = 0;
+    immersive_sync(sh);
     for (;;) {
         if (sh->script) {
             int got = harness_event(sh, &e);
@@ -785,10 +882,27 @@ static void host_events(uw_shell *sh) {
             if (got == 2) continue;
         } else if (!SDL_PollEvent(&e)) break;
         if (e.type == SDL_EVENT_QUIT) sh->running = 0;
+        else if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
+            sh->unfocused = e.type == SDL_EVENT_WINDOW_FOCUS_LOST;
+            if (sh->unfocused) {
+                memset(keybuf + rw(ds, 0x2344), 0, 0x80);
+                m->buttons = 0;
+            }
+            immersive_sync(sh);
+        }
         else if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) {
             uint8_t sc_ = sh->script ? (uint8_t)e.key.raw : xt_scan(e.key.scancode);
             int down = e.type == SDL_EVENT_KEY_DOWN;
             if (e.key.repeat) continue;
+            if (sc_ == 0x0f && sh->have_game && sh->mode == MODE_DUNGEON
+                && !sh->options.active && !m->stack_ask && !m->mantra_ask
+                && !m->yesno_ask && !m->instrument) {
+                if (down) {
+                    sh->immersive = !sh->immersive;
+                    immersive_sync(sh);
+                }
+                continue;
+            }
             /* Alt-Enter the host's, the window full screen and back: no key
              * of the original's (its Alt-Enter is bound to nothing) */
             if (!sh->script && e.key.scancode == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT)) {
@@ -822,6 +936,26 @@ static void host_events(uw_shell *sh) {
                    || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             float fx, fy;
             int16_t x, y;
+            if (m->immersive) {
+                if (e.type == SDL_EVENT_MOUSE_MOTION) {
+                    /* Raw physical deltas: sensitivity does not vary with the window size. */
+                    int yaw, pitch;
+                    sh->look_x += e.motion.xrel * 32.0f;
+                    sh->look_y -= e.motion.yrel * 32.0f;
+                    yaw = (int)sh->look_x; pitch = (int)sh->look_y;
+                    sh->look_x -= (float)yaw; sh->look_y -= (float)pitch;
+                    if (yaw || pitch) uw_motion_free_look(m, yaw, pitch);
+                } else {
+                    uint16_t mask = e.button.button == SDL_BUTTON_LEFT ? 1
+                        : e.button.button == SDL_BUTTON_RIGHT ? 2 : 0;
+                    if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                        m->buttons |= mask;
+                        sh->input_edge |= 2;
+                        if (mask == 2) sh->context_click = 1;
+                    } else m->buttons &= (uint16_t)~mask;
+                }
+                continue;
+            }
             if (!sh->script) SDL_ConvertEventToRenderCoordinates(sh->ren, &e);
             fx = e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.x : e.button.x;
             fy = e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.y : e.button.y;
@@ -881,7 +1015,7 @@ static void host_events(uw_shell *sh) {
     /* cursor_update_position with the mouse still: the keyboard's glide,
      * and the host's pointer put where it took the cursor, so the mouse
      * goes on from there as the original's deltas would */
-    if (sh->have_game && !moved && (int16_t)rw(ds, 0x0125) >= 0) {
+    if (sh->have_game && !m->immersive && !moved && (int16_t)rw(ds, 0x0125) >= 0) {
         uw_motion_cursor_glide(m);
         if (!sh->script && sh->win && sh->ren) {
             float wx, wy;
@@ -1214,6 +1348,23 @@ static void input_tick_pass(uw_shell *sh) {
                 trace_line(sh, "the options panel opened");
             }
         }
+    } else if (m->immersive) {
+        /* Keep keyboard movement and panel shortcuts; mouse buttons never
+         * enter the original cursor-based movement/hotspot path. */
+        if (keyboard_read_held(m, sh->keybuf, &code, &index)) {
+            uw_motion_input_key(m, code, index);
+            if (m->options_open) {
+                m->options_open = 0;
+                uw_options_open_from_key(&sh->options, m->options_key, m->clock);
+                m->options_key = 0;
+            }
+        }
+        uw_motion_cursor_move(m, 52 + UW_VIEW_W / 2, 68 + UW_VIEW_H / 2);
+        if (sh->context_click) {
+            sh->context_click = 0;
+            sh->click_handler = 0x2b130effu;
+            uw_motion_context_action(m);
+        } else if (m->buttons & 1) uw_motion_action_combat(m, 5);
     } else {
         int got = 0, k;
         for (k = 0; k < 2 && !got; k++) {
@@ -1324,6 +1475,7 @@ static void dungeon_pass(uw_shell *sh) {
     uint8_t *ds = sh->ds;
     uint16_t pending, bit;
     if (m->map_open) { map_enter(sh); return; }
+    if (m->immersive) uw_motion_enter_combat(m);
     /* --objcheck: the original's own validator over each level the game
      * comes to, reported when a list is not sound */
     if (sh->objcheck && rw(ds, 0x7278) != sh->objcheck_level) {
@@ -2210,6 +2362,34 @@ static void set_mode(uw_shell *sh, int mode) {
     sh->mode = mode;
 }
 
+static void immersive_present(uw_shell *sh) {
+    static uint8_t weapon[UW_VIEW_BYTES], mask[UW_VIEW_BYTES];
+    static uint8_t view[UW_IMMERSIVE_BYTES];
+    int x, y;
+    double aspect = sh->m.view_output_height > 0
+        ? (double)sh->m.view_output_width / sh->m.view_output_height : 4.0 / 3.0;
+    double original_aspect = (double)UW_VIEW_W / (UW_VIEW_H * 1.2);
+    double scale_x = original_aspect / (aspect > 1.0 ? aspect : 1.0);
+    double scale_y = aspect < 1.0 ? aspect : 1.0;
+    /* Existing weapon art retains its size relative to the world. Composite
+     * onto a transparent native buffer, then double it over the sharper scene. */
+    memset(weapon, 0, sizeof weapon);
+    memset(mask, 0, sizeof mask);
+    uw_motion_weapon_composite(&sh->m, weapon, mask);
+    memcpy(view, immersive_view, sizeof view);
+    for (y = 0; y < UW_IMMERSIVE_H; y++)
+        for (x = 0; x < UW_IMMERSIVE_W; x++) {
+            int sx = (int)(UW_VIEW_W / 2.0 + (x - UW_IMMERSIVE_W / 2.0) / (2.0 * scale_x));
+            int sy = (int)(UW_VIEW_H / 2.0 + (y - UW_IMMERSIVE_H / 2.0) / (2.0 * scale_y));
+            if (sx >= 0 && sx < UW_VIEW_W && sy >= 0 && sy < UW_VIEW_H) {
+                int at = sy * UW_VIEW_W + sx;
+                if (mask[at]) view[y * UW_IMMERSIVE_W + x] = weapon[at];
+            }
+        }
+    show_immersive(view, sh->pal, sh->ren, sh->m.screenshot);
+    sh->m.screenshot = 0;
+}
+
 /* ---- the screen ---- */
 
 static void present(uw_shell *sh) {
@@ -2236,7 +2416,10 @@ static void present(uw_shell *sh) {
                 sh->screen[(VTOP + VH - 1 - fy) * 320 + VX + fx] = flash[fy * VW + fx];
                 if (m->screen_written) m->screen_written[(VTOP + VH - 1 - fy) * 320 + VX + fx] = 1;
             }
-        show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
+        if (m->immersive) {
+            memset(immersive_view, m->screen_flash_colour, sizeof immersive_view);
+            show_immersive(immersive_view, sh->pal, sh->ren, 0);
+        } else show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
         uw_motion_cursor_show(m);
         trace_line(sh, "the view flashed %02x", m->screen_flash_colour);
         m->screen_flash = 0;
@@ -2253,7 +2436,7 @@ static void present(uw_shell *sh) {
         ww(ds, 0x56aa, (uint16_t)(rw(ds, 0x56aa) | 2));
         m->screen_fade &= (uint8_t)~4u;
     }
-    if (m->screenshot) {
+    if (m->screenshot && !m->immersive) {
         screenshot_write(sh->screen, sh->pal);
         trace_line(sh, "a screenshot written");
         m->screenshot = 0;
@@ -2275,7 +2458,8 @@ static void present(uw_shell *sh) {
         cutscene_enter(sh);
         if (sh->mode == MODE_CUTSCENE) { cutscene_present(sh); return; }
     }
-    show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
+    if (m->immersive) immersive_present(sh);
+    else show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
 }
 
 /* The pass's pace: the original ran its passes flat out; this paces them
@@ -2474,6 +2658,7 @@ static void game_loop(uw_shell *sh) {
         else sh->m.clock = sh->clock0 + (uint32_t)((SDL_GetTicksNS() - sh->t0) * 256 / 1000000000ull);
         host_events(sh);
         if (!modal_pass(sh)) mode_row(sh->mode)->pass(sh);
+        immersive_sync(sh);
         sound_timers(sh);
         if (mode_row(sh->mode)->present) mode_row(sh->mode)->present(sh);
         else present(sh);

@@ -37,6 +37,7 @@ typedef struct {
     uint8_t  rast[0x10000];     /* the data segment: the camera program, the aspect word */
     uint8_t  priv[0x10000];     /* the private segment (SS): the view-state block */
     int16_t  view_width, view_height;
+    int      output_width, output_height; /* host aspect override; zero: original */
 
     /* ---- what it found ------------------------------------------------ */
     int      handler;           /* the camera block's first word */

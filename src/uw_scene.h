@@ -83,7 +83,9 @@ typedef struct {
     uw_blob  shades_file, light_file, mono_file;  /* SHADES.DAT, LIGHT.DAT, MONO.DAT, read once */
 
     /* ---- the view ------------------------------------------------------ */
-    int      view_width, view_height;      /* 172 x 113, the dungeon view */
+    int      output_width, output_height; /* immersive camera aspect; zero: original */
+    int      hide_overlay;                /* host: omit the view interface marks */
+    int      view_width, view_height;      /* 172 x 113 normally; 344 x 226 immersive */
     uint16_t projection_scale;             /* view_projection_scale: 25000 */
 
     /* ---- the renderer's working state, kept across draws --------------- */
