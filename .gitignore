@@ -5,3 +5,4 @@ AppDir/
 *.AppImage
 uwpic*
 SAVE[1-4]/
+.DS_Store

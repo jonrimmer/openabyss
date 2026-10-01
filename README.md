@@ -11,9 +11,13 @@ so when it meets one, and a report of how it went is welcome.
 
 ## Getting it
 
-**Windows and Linux builds** are on the releases page: a zip for Windows
+**Windows, Linux and macOS builds** are on the releases page: a zip for Windows
 (unpack it anywhere and run `openabyss.exe`) and an AppImage for Linux
-(make it executable and run it). macOS is not built yet.
+(make it executable and run it), and a zip containing `OpenAbyss.app` for
+macOS 11 or later, on Intel and Apple Silicon. Unzip the macOS build and
+drag the app to Applications. The app carries SDL with it. It is not
+signed with an Apple Developer ID or notarized; if macOS blocks opening
+it, allow it in System Settings > Privacy & Security after trying to open it.
 
 **From source** you need a C11 compiler and CMake 3.16 or later; SDL 3 is
 used if it is installed, and otherwise downloaded and built with the
@@ -24,6 +28,14 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build                # builds build/openabyss
 ./build/openabyss
 ```
+
+On macOS, CMake builds `build/OpenAbyss.app`; run its executable with
+`./build/OpenAbyss.app/Contents/MacOS/OpenAbyss`. To make a standalone app
+with SDL included, run `cmake --install build --prefix "$PWD/package"`.
+After installing, ad-hoc sign it with
+`codesign --force --deep --sign - package/OpenAbyss.app`.
+For a universal build, add `'-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64'` and
+`-DOPENABYSS_VENDORED_SDL=ON` to the configure command.
 
 On Linux with SDL 3 installed (and `pkg-config`), `make` builds `./openabyss`
 as well. SDL 3.4 or later writes screenshots as PNG; 3.2 writes them as BMP.
@@ -36,7 +48,8 @@ where GOG, GOG Galaxy, Heroic and Wine put it; if it finds nothing it asks
 you for the folder -- choose the one GOG installed the game to. It then
 copies the game out of `game.gog` once (about 12 MB), into its per-user
 folder (`~/.local/share/openabyss/` on Linux, `%APPDATA%\openabyss\` on
-Windows), and remembers it in `openabyss.cfg` there; `./openabyss
+Windows, `~/Library/Application Support/openabyss/` on macOS), and remembers
+it in `openabyss.cfg` there; `./openabyss
 --locate` asks again.
 
 A folder already holding the game's files works as well: the one with

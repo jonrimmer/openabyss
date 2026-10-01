@@ -31,6 +31,13 @@ endif()
 
 file(GLOB OPENABYSS_LIBRARY CONFIGURE_DEPENDS src/uw_*.c)
 add_executable(openabyss WIN32 src/tools/uwshell.c ${OPENABYSS_LIBRARY})
+if(APPLE)
+  set_target_properties(openabyss PROPERTIES
+    MACOSX_BUNDLE TRUE
+    OUTPUT_NAME OpenAbyss
+    MACOSX_BUNDLE_BUNDLE_NAME OpenAbyss
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.openabyss.OpenAbyss)
+endif()
 target_include_directories(openabyss PRIVATE src)
 target_compile_definitions(openabyss PRIVATE
   UW_NO_HARNESS UW_NO_ACCOUNTING
@@ -56,7 +63,16 @@ endif()
 if(UNIX AND NOT APPLE)
   set_target_properties(openabyss PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
 endif()
-install(TARGETS openabyss RUNTIME DESTINATION bin)
-if(OPENABYSS_SDL_BUILT)
+install(TARGETS openabyss RUNTIME DESTINATION bin BUNDLE DESTINATION .)
+if(APPLE)
+  # Copy SDL and any other non-system dependencies into the installed app,
+  # rewriting their load paths so the bundle can be moved to another Mac.
+  install(CODE "
+    include(BundleUtilities)
+    set(BU_CHMOD_BUNDLE_ITEMS TRUE)
+    fixup_bundle(\"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/OpenAbyss.app\"
+      \"\" \"$<TARGET_FILE_DIR:SDL3::SDL3>\")
+  ")
+elseif(OPENABYSS_SDL_BUILT)
   install(TARGETS SDL3-shared LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 endif()
