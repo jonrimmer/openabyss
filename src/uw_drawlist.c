@@ -126,6 +126,19 @@ static void draw_face(uw_dl *m, const uw_fb *fb, const uw_rast_svert *sv,
                       int n, uint16_t shader, const uw_rast_texrec *r,
                       int lit, const uint8_t *px, size_t plen) {
     if (!fb || !fb->pixels || !px) return;
+    if (m->non_affine && !m->no_mapper) {
+        uint8_t shade[UW_CLIP_MAX];
+        const uint8_t *light = lit ? m->light : NULL;
+        int i;
+        if (n > UW_CLIP_MAX) return;
+        if (light)
+            for (i = 0; i < n; i++)
+                shade[i] = (uint8_t)uw_rast_vertex_shade(&sv[i], &m->light_params);
+        uw_gfx_texture_poly_perspective_lit(fb, sv, n, r, px, plen,
+                                            light ? shade : NULL, light,
+                                            &m->light_overrun);
+        return; /* the texture and its lighting were written together */
+    }
     if (m->no_mapper) {
         /* nothing: a harness asking which pixels the lighting pass alone
          * reaches */

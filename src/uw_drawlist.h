@@ -99,6 +99,7 @@ typedef struct {
     uw_light_params light_params;
     long           light_overrun;
     int            no_mapper;             /* a harness's probe: light only */
+    int            non_affine;            /* host: perspective-correct textures */
     /* Sprites (emit_sprite, draw_sprite): the art an id names -- in the
      * original a segment in EMS physical page 2, rast_art_segment -- the
      * auxiliary palettes, XFER.DAT as loaded and

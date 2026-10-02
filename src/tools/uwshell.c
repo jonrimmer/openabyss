@@ -96,6 +96,7 @@ static uint16_t gr_sizes(const char *dir, const char *const *files, int nfiles, 
 
 uw_scene *sc;
 static int sc_opened;
+static int non_affine; /* 0: host preference, retained across game modes */
 /* A place this build looks for the game's files before the player's own
  * configuration (-DUW_GAME_DIR_FALLBACK=\"DIR\"); "." when it names none. */
 #ifndef UW_GAME_DIR_FALLBACK
@@ -293,6 +294,7 @@ static void scene_camera(uw_motion *m) {
     sc->output_width = m->immersive ? m->view_output_width : 0;
     sc->output_height = m->immersive ? m->view_output_height : 0;
     sc->hide_overlay = m->immersive;
+    sc->non_affine = non_affine;
     if (sc->view_width != (m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W)) sc->drawn = 0;
     sc->view_width = m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W;
     sc->view_height = m->immersive ? UW_IMMERSIVE_H : UW_VIEW_H;
@@ -894,6 +896,15 @@ static void host_events(uw_shell *sh) {
             uint8_t sc_ = sh->script ? (uint8_t)e.key.raw : xt_scan(e.key.scancode);
             int down = e.type == SDL_EVENT_KEY_DOWN;
             if (e.key.repeat) continue;
+            if (sc_ == 0x0b && sh->have_game && sh->mode == MODE_DUNGEON
+                && !sh->options.active && !m->stack_ask && !m->mantra_ask
+                && !m->yesno_ask && !m->instrument) {
+                if (down) {
+                    non_affine = !non_affine;
+                    ww(ds, 0x56aa, (uint16_t)(rw(ds, 0x56aa) | 2));
+                }
+                continue;
+            }
             if (sc_ == 0x0f && sh->have_game && sh->mode == MODE_DUNGEON
                 && !sh->options.active && !m->stack_ask && !m->mantra_ask
                 && !m->yesno_ask && !m->instrument) {

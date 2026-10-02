@@ -2,12 +2,14 @@
 /* The graphics module's shaded polygon path, as the rasteriser uses it to
  * LIGHT a textured face.
  *
- * A textured face is drawn twice. The mapper (uw_texmap.h) writes raw texels;
+ * In the original rendering paths a textured face is drawn twice. The
+ * mapper (uw_texmap.h) writes raw texels;
  * then, when the draw list has set the lighting flag, rast_draw_face_lit
  * gives each projected vertex a shade from its distance and hands the same
  * polygon to gfx_polygon_shaded_to_spans with the span pair pointed at the
  * two REMAP handlers, which replace every pixel already in the buffer with
- * LIGHT.DAT[shade][pixel]. Nothing in the texture mapper knows about light.
+ * LIGHT.DAT[shade][pixel]. The host's non-affine mapper instead writes lit
+ * texels in one scan so border coverage cannot disagree between passes.
  *
  * The lighting table is 16 rows of 256 -- in the rasteriser's own code
  * segment -- loaded from LIGHT.DAT, or MONO.DAT at shade level 5. The

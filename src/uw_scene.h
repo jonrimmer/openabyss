@@ -85,6 +85,7 @@ typedef struct {
     /* ---- the view ------------------------------------------------------ */
     int      output_width, output_height; /* immersive camera aspect; zero: original */
     int      hide_overlay;                /* host: omit the view interface marks */
+    int      non_affine;                   /* host: perspective-correct textures */
     int      view_width, view_height;      /* 172 x 113 normally; 344 x 226 immersive */
     uint16_t projection_scale;             /* view_projection_scale: 25000 */
 

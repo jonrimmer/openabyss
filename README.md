@@ -99,6 +99,10 @@ timing. The game's own keys are the original's: the letters walk and turn,
 the keypad glides the cursor, F1..F10 and the Ctrl keys open panels, Alt-q
 writes a screenshot (`uwpicNNN.png` in the working directory), Alt-x quits.
 
+**0** toggles perspective-correct (non-affine) texture rendering in the dungeon,
+for walls, floors, ceilings and textured objects. The original rendering is
+used by default. The setting applies to both the normal and full-window views.
+
 **Tab** toggles a view that fills the window and hides the interface. The
 3D renderer doubles its resolution to 344 × 226 in this mode. The camera
 matches the window's aspect ratio, showing more horizontally in wide windows

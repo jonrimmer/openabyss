@@ -562,6 +562,7 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
 
     /* The executor: once to reach what a frame leaves, the first time. */
     if (s->drawn == 0) { dl_first(s); s->ever_drawn = 1; }
+    s->dl.non_affine = s->non_affine;
     /* gfx_select_row_blitter: 1 from view_build_draw_list, 2 from
      * drawlist_begin_frame */
     s->dl.row_blitter = (uint8_t)(pick ? 2 : 1);

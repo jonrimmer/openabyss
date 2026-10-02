@@ -1,5 +1,108 @@
 /* SPDX-License-Identifier: MIT */
 #include "uw_texmap.h"
+#include <math.h>
+
+void uw_gfx_texture_poly_perspective(const uw_fb *fb, const uw_rast_svert *v,
+                                     int n, const uw_rast_texrec *tex,
+                                     const uint8_t *texels, size_t n_texels) {
+    uw_gfx_texture_poly_perspective_lit(fb, v, n, tex, texels, n_texels,
+                                        NULL, NULL, NULL);
+}
+
+void uw_gfx_texture_poly_perspective_lit(const uw_fb *fb, const uw_rast_svert *v,
+                                         int n, const uw_rast_texrec *tex,
+                                         const uint8_t *texels, size_t n_texels,
+                                         const uint8_t *shade,
+                                         const uint8_t *light, long *overrun) {
+    int i, y, ymin, ymax;
+    if (!fb || !fb->pixels || !fb->row || fb->n_rows <= 0
+        || !v || n < 3 || !tex || !texels) return;
+    ymin = ymax = v[0].sy;
+    for (i = 0; i < n; i++) {
+        if (v[i].z <= 0) return; /* near clipping belongs to the rasteriser */
+        if (v[i].sy < ymin) ymin = v[i].sy;
+        if (v[i].sy > ymax) ymax = v[i].sy;
+    }
+    if (ymin == ymax) return;
+    if (ymin < 0) ymin = 0;
+    if (ymax >= fb->n_rows) ymax = fb->n_rows - 1;
+    for (y = ymin; y <= ymax; y++) {
+        double lx = 0, rx = 0, lq = 0, rq = 0;
+        double lu = 0, ru = 0, lv = 0, rv = 0;
+        double ls = 0, rs = 0;
+        size_t row = fb->row[y], end;
+        int hits = 0, x, first, last;
+        if (row >= fb->size) continue;
+        /* Bound each span to its row as well as the framebuffer. */
+        end = y + 1 < fb->n_rows ? fb->row[y + 1] : fb->size;
+        if (y + 1 == fb->n_rows && y > 0 && row > fb->row[y - 1]) {
+            size_t width = row - fb->row[y - 1];
+            if (width < end - row) end = row + width;
+        }
+        if (end > fb->size) end = fb->size;
+        if (end <= row) continue;
+        for (i = 0; i < n; i++) {
+            const uw_rast_svert *a = &v[i], *b = &v[(i + 1) % n];
+            double t, sx, q, u, vv, aq, bq, s = 0;
+            if (a->sy == b->sy) continue;
+            /* Evaluate shared edges in the same direction regardless of
+             * polygon winding, avoiding different floating-point roundoff. */
+            if (a->sy < b->sy) {
+                const uw_rast_svert *tmp = a; a = b; b = tmp;
+            }
+            if (y < b->sy || y > a->sy) continue;
+            t = (double)(y - a->sy) / (b->sy - a->sy);
+            aq = 1.0 / a->z; bq = 1.0 / b->z;
+            sx = a->sx + t * (b->sx - a->sx);
+            q = aq + t * (bq - aq);
+            u = a->u * aq + t * (b->u * bq - a->u * aq);
+            vv = a->v * aq + t * (b->v * bq - a->v * aq);
+            if (shade && light)
+                s = shade[a - v] + t * (shade[b - v] - shade[a - v]);
+            if (!hits || sx < lx) { lx = sx; lq = q; lu = u; lv = vv; ls = s; }
+            if (!hits || sx > rx) { rx = sx; rq = q; ru = u; rv = vv; rs = s; }
+            hits++;
+        }
+        if (hits < 2) continue;
+        /* The original texture and lighting passes seed edges at x + 1/2.
+         * Round both borders to the nearest pixel, inclusively. Rounding
+         * inward leaves cracks at rounded subdivision vertices where a
+         * short edge meets a neighbouring section's unsplit long edge. */
+        first = (int)floor(lx + 0.5); last = (int)floor(rx + 0.5);
+        if (first < 0) first = 0;
+        if ((size_t)(last < 0 ? 0 : last) >= end - row)
+            last = (int)(end - row - 1);
+        for (x = first; x <= last; x++) {
+            double t = rx > lx ? (x - lx) / (rx - lx) : 0;
+            /* Rounded coverage can extend half a pixel beyond the face.
+             * Sampling must stay on its edge rather than wrap UVs there. */
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+            double q = lq + t * (rq - lq);
+            /* Floor before wrapping, including negative coordinates. Absorb
+             * roundoff at exact integer texel boundaries (notably corners). */
+            uint16_t u = (uint16_t)(int32_t)floor((lu + t * (ru - lu)) / q + 1e-8);
+            uint16_t vv = (uint16_t)(int32_t)floor((lv + t * (rv - lv)) / q + 1e-8);
+            size_t off = (size_t)(vv & tex->v_mask) + (u >> 8);
+            if (off < n_texels) {
+                uint8_t pixel = texels[off];
+                if (shade && light) {
+                    /* Affine vertex lighting with the game's alternating
+                     * quarter/three-quarter shade dither, anchored to the
+                     * screen so adjacent sections use the same pattern. */
+                    uint8_t level = (uint8_t)floor(ls + t * (rs - ls)
+                                                  + ((x ^ y) & 1 ? 0.75 : 0.25));
+                    if (level > 15) {
+                        if (overrun) (*overrun)++;
+                        level = level & 0x80 ? 0 : 15;
+                    }
+                    pixel = light[(unsigned)level * 256u + pixel];
+                }
+                fb->pixels[row + (size_t)x] = pixel;
+            }
+        }
+    }
+}
 
 /* `idiv` with the graphics module's divide-error handler NOT armed: these
  * are the mapper's own divides and the module traps on overflow rather than

@@ -82,6 +82,23 @@ void uw_gfx_texture_poly_affine(const uw_fb *fb, const uw_rast_svert *v,
                                 int n, const uw_rast_texrec *tex,
                                 const uint8_t *texels, size_t n_texels);
 
+/* Convex, clipped faces with positive camera-space z. Interpolates 1/z,
+ * u/z and v/z in screen space, then divides for each texel. Coordinates
+ * retain the original 8.8 u and packed-row v texture layout. */
+void uw_gfx_texture_poly_perspective(const uw_fb *fb, const uw_rast_svert *v,
+                                     int n, const uw_rast_texrec *tex,
+                                     const uint8_t *texels, size_t n_texels);
+
+/* The same coverage with lighting applied to each sampled texel before it
+ * is written. `shade` has n vertex levels and `light` is the 4096-byte
+ * remap table; either may be NULL for an unlit face. This avoids separate
+ * texture and lighting scans disagreeing at rounded polygon borders. */
+void uw_gfx_texture_poly_perspective_lit(const uw_fb *fb, const uw_rast_svert *v,
+                                         int n, const uw_rast_texrec *tex,
+                                         const uint8_t *texels, size_t n_texels,
+                                         const uint8_t *shade,
+                                         const uint8_t *light, long *overrun);
+
 /* The two halves of one step, exposed because they are what the property
  * tests hold: `uw_gfx_step16` is the two-divide 16.16 step above. */
 int32_t uw_gfx_step16(int16_t delta, int16_t rows);

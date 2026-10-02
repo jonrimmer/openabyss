@@ -51,6 +51,17 @@ if(MINGW)
   target_link_options(openabyss PRIVATE -static-libgcc)
 endif()
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(texmap_test tests/texmap_test.c src/uw_texmap.c)
+  target_include_directories(texmap_test PRIVATE src)
+  if(NOT MSVC)
+    target_link_libraries(texmap_test PRIVATE m)
+    target_compile_options(texmap_test PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME perspective_texmap COMMAND texmap_test)
+endif()
+
 # SDL3's library beside the program, where Windows looks for it
 if(WIN32)
   add_custom_command(TARGET openabyss POST_BUILD
