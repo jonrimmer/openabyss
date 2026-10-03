@@ -861,6 +861,7 @@ static void immersive_sync(uw_shell *sh) {
     m->buttons = 0;
     sh->context_click = 0;
     sh->look_x = sh->look_y = 0;
+    sh->drag_fraction_x = sh->drag_fraction_y = 0;
     ww(sh->ds, 0x0115, 0xffff);
     sh->ds[0x011d] = 0;
     if (sh->win && !sh->script) {
@@ -922,6 +923,7 @@ static void console_toggle(uw_shell *sh) {
     m->immersive_forward = m->immersive_strafe = 0;
     sh->context_click = sh->input_edge = sh->esc_edge = 0;
     sh->look_x = sh->look_y = 0;
+    sh->drag_fraction_x = sh->drag_fraction_y = 0;
     ww(sh->ds, 0x0115, 0xffff);
     sh->ds[0x011d] = 0;
     sh->console_changed = 1;
@@ -1111,9 +1113,16 @@ static void host_events(uw_shell *sh) {
             if (!sh->script) fy = screen_y_of(fy);
             if (sh->relative && e.type == SDL_EVENT_MOUSE_MOTION) {
                 /* captured: the mouse's motion added to where the cursor
-                 * is, as the driver's deltas are in the original */
-                fx = (float)(int16_t)rw(ds, 0x010e) + e.motion.xrel;
-                fy = (float)(199 - (int16_t)rw(ds, 0x0110)) + screen_y_of(e.motion.yrel);
+                 * is. Retain subpixels after scaling, and truncate the signed
+                 * delta rather than the position so both directions agree. */
+                int dx, dy;
+                sh->drag_fraction_x += e.motion.xrel;
+                sh->drag_fraction_y += screen_y_of(e.motion.yrel);
+                dx = (int)sh->drag_fraction_x; dy = (int)sh->drag_fraction_y;
+                sh->drag_fraction_x -= (float)dx;
+                sh->drag_fraction_y -= (float)dy;
+                fx = (float)cursor_x(sh) + (float)dx;
+                fy = (float)(199 - cursor_y(sh)) + (float)dy;
             } else if (sh->relative) {
                 /* a button while captured: the host's hidden pointer is
                  * still where the grab began, so the press or release
@@ -1128,6 +1137,9 @@ static void host_events(uw_shell *sh) {
                 uw_motion_cursor_move(m, x, y);
                 moved = 1;
             }
+            /* Clipped motion must not carry over when leaving a boundary. */
+            if (fx < 0 || fx > 319 || cursor_x(sh) != x) sh->drag_fraction_x = 0;
+            if (fy < 0 || fy > 199 || cursor_y(sh) != y) sh->drag_fraction_y = 0;
             if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                 uint16_t mask = e.button.button == SDL_BUTTON_LEFT ? 1 : e.button.button == SDL_BUTTON_RIGHT ? 2 : 0;
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -1137,6 +1149,7 @@ static void host_events(uw_shell *sh) {
                     if (!sh->script && !sh->relative && x >= 52 && x < 224 && y >= 68 && y < 181) {
                         SDL_SetWindowRelativeMouseMode(sh->win, true);
                         sh->relative = 1;
+                        sh->drag_fraction_x = sh->drag_fraction_y = 0;
                     }
                     m->buttons |= mask;
                     sh->input_edge |= 2;
@@ -1152,6 +1165,7 @@ static void host_events(uw_shell *sh) {
                         float wx, wy;
                         SDL_SetWindowRelativeMouseMode(sh->win, false);
                         sh->relative = 0;
+                        sh->drag_fraction_x = sh->drag_fraction_y = 0;
                         if (SDL_RenderCoordinatesToWindow(sh->ren, (float)(int16_t)rw(ds, 0x010e),
                                                           logical_y((float)(199 - (int16_t)rw(ds, 0x0110))), &wx, &wy))
                             SDL_WarpMouseInWindow(sh->win, wx, wy);

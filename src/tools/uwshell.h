@@ -97,6 +97,7 @@ struct uw_shell {
     int            context_click;   /* right-button edge, consumed by input_tick */
     int            unfocused;       /* suspend capture until focus returns */
     float          look_x, look_y;  /* fractional relative mouse angles */
+    float          drag_fraction_x, drag_fraction_y; /* subpixel motion while captured */
     int            relative;        /* the host's pointer captured while a button walks in the view */
     int            objcheck;        /* --objcheck: objcheck_run over each level entered */
     uint16_t       objcheck_level;

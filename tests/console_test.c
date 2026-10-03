@@ -126,6 +126,63 @@ static void text(const char *str) {
     CHECK(SDL_PushEvent(&e));
 }
 
+static void mouse_motion(float dx, float dy) {
+    SDL_Event e = {0};
+    e.type = SDL_EVENT_MOUSE_MOTION;
+    e.motion.xrel = dx; e.motion.yrel = dy;
+    CHECK(SDL_PushEvent(&e));
+}
+
+static void check_mouse_drag(void) {
+    uw_shell *sh = &test_shell;
+    int aspect, axis, direction, i, distance[2];
+    for (aspect = 0; aspect < 2; aspect++) {
+        SDL_Surface *surface = SDL_CreateSurface(1280, aspect ? 960 : 800,
+                                                SDL_PIXELFORMAT_XRGB8888);
+        SDL_Renderer *ren;
+        CHECK(surface);
+        ren = SDL_CreateSoftwareRenderer(surface);
+        CHECK(ren);
+        for (axis = 0; axis < 2; axis++) {
+            for (direction = -1; direction <= 1; direction += 2) {
+                reset_shell();
+                present_aspect = aspect;
+                sh->ren = ren; sh->relative = 1;
+                gameplay_presentation(sh);
+                ww(sh->ds, CURSOR_BOUND_X1, 319);
+                ww(sh->ds, CURSOR_BOUND_Y1, 199);
+                uw_motion_cursor_move(&sh->m, 140, 120);
+                /* Each physical pixel is less than one game pixel. */
+                for (i = 0; i < 24; i++) {
+                    mouse_motion(axis == 0 ? (float)direction : 0,
+                                 axis == 1 ? (float)direction : 0);
+                    host_events(sh);
+                }
+                distance[direction == 1] = axis == 0 ? abs(cursor_x(sh) - 140)
+                                                     : abs(cursor_y(sh) - 120);
+                CHECK(distance[direction == 1] >= 4);
+                /* Reverse the same physical distance: no directional drift. */
+                for (i = 0; i < 24; i++) {
+                    mouse_motion(axis == 0 ? (float)-direction : 0,
+                                 axis == 1 ? (float)-direction : 0);
+                    host_events(sh);
+                }
+                CHECK(cursor_x(sh) == 140 && cursor_y(sh) == 120);
+                /* Alternating tiny movements must not creep up or left. */
+                for (i = 0; i < 24; i++) {
+                    mouse_motion(-1, -1); host_events(sh);
+                    mouse_motion(1, 1); host_events(sh);
+                }
+                CHECK(cursor_x(sh) == 140 && cursor_y(sh) == 120);
+            }
+            CHECK(distance[0] == distance[1]);
+        }
+        SDL_DestroyRenderer(ren);
+        SDL_DestroySurface(surface);
+    }
+    present_aspect = 1;
+}
+
 static void check_pause_and_restore(int immersive) {
     uw_shell *sh = &test_shell;
     uint8_t screen[64000], scroll_state[0x43];
@@ -443,6 +500,7 @@ static void check_draw_list_bounds(void) {
 int main(void) {
     CHECK(SDL_Init(SDL_INIT_EVENTS));
     check_commands();
+    check_mouse_drag();
     check_pause_and_restore(0);
     check_pause_and_restore(1);
     check_god_mode();
