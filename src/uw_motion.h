@@ -103,6 +103,7 @@ typedef struct {
     int      view_output_width, view_output_height; /* immersive window aspect */
     int8_t   immersive_forward, immersive_strafe; /* WASD axes, -1..1 */
     uint8_t  immersive;      /* host: free look, left-button combat, no view marks */
+    uint8_t  god_mode;       /* host console: the player takes no damage */
     uint8_t  view_unknown;   /* the view was presented in the pass where the
                               * port does not draw it: over the view the
                               * cursor's save area is what cursor_blit_in_view

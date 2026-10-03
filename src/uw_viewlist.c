@@ -21,6 +21,11 @@ static int16_t vs(const uw_vl *v, int at) {
 }
 
 static void emit(uw_vl *v, uint16_t w) {
+    if (v->list_overflow) return;
+    if (v->ptr >= UW_VL_LIST_END - 2) {
+        v->list_overflow = 1;
+        return;
+    }
     v->list[v->ptr] = (uint8_t)w;
     v->list[(uint16_t)(v->ptr + 1)] = (uint8_t)(w >> 8);
     v->ptr = (uint16_t)(v->ptr + 2);
@@ -1023,6 +1028,7 @@ static void sweep(uw_vl *v) {
 
 uint16_t uw_vl_build(uw_vl *v) {
     uint16_t detail;
+    v->list_overflow = 0;
     memcpy(v->mem, v->ds, sizeof v->mem);
     if (v->spans && v->level) {
         if (v->spans >= 2) {

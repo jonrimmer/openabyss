@@ -28,6 +28,7 @@
 #include "../uw_chargen_ui.h"
 #include "../uw_automap.h"
 #include "../uw_menu.h"
+#include "../uw_console.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -89,6 +90,10 @@ struct uw_shell {
     int            fullscreen;      /* --fullscreen, Alt-Enter */
     int            vsync;           /* 0 on (the default), -1 --no-vsync */
     int            immersive;       /* Tab: expand the dungeon view to the window */
+    uw_console     console;
+    uint8_t        console_scroll[320 * 40], console_written[320 * 40];
+    uint64_t       console_started; /* exclude console time from the game clock */
+    int            console_changed; /* opening/closing consumes the whole pass */
     int            context_click;   /* right-button edge, consumed by input_tick */
     int            unfocused;       /* suspend capture until focus returns */
     float          look_x, look_y;  /* fractional relative mouse angles */

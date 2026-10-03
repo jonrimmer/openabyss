@@ -103,9 +103,23 @@ writes a screenshot (`uwpicNNN.png` in the working directory), Alt-x quits.
 for walls, floors, ceilings and textured objects. The original rendering is
 used by default. The setting applies to both the normal and full-window views.
 
+**§** opens and closes a console in the bottom message scroll (the grave key
+also works). Gameplay pauses while it is open, including in the full-window
+view. Press Enter to run a command; Escape also closes the console. Closing
+restores the scroll's previous contents. Commands:
+
+- `god` toggles invulnerability to combat, environmental and fall damage.
+- `affine on` selects the original texture renderer.
+- `affine off` selects perspective-correct texture rendering.
+- `widescreen on` lets the immersive view fill the window (the default).
+- `widescreen off` centres the immersive view at the original 4:3 ratio,
+  with black bars on either side in wide windows.
+- `bright on` enables full bright rendering for the dungeon scene.
+- `bright off` restores normal lighting (the default).
+
 **Tab** toggles a view that fills the window and hides the interface. The
 3D renderer doubles its resolution to 344 × 226 in this mode. The camera
-matches the window's aspect ratio, showing more horizontally in wide windows
+matches the window's aspect ratio by default, showing more horizontally in wide windows
 without stretching or cropping the view. Combat is automatic: move the mouse to look around (up and down stay
 within the original limits), hold the left mouse button to charge an attack
 and release it to strike. Right-click uses the object or door at the centre

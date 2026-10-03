@@ -280,6 +280,7 @@ static int object_damage_debris(uw_motion *m, uint16_t obj, uint16_t attacker, u
  * hit points, or object_damage and, when the thing breaks,
  * object_damage_debris. */
 int apply_damage(uw_motion *m, uint16_t obj, uint16_t attacker, int16_t x, int16_t y, uint8_t dmg, uint8_t type) {
+    if (m->god_mode && obj == rw(m->ds, TRACKED_OBJECT)) return 0;
     dmg = compute_damage(m, obj, dmg, type);
     if (((rw(m->lseg, obj) & 0x1c0) >> 6) == 1)
         return creature_take_damage(m, obj, dmg, attacker);

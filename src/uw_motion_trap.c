@@ -1368,7 +1368,8 @@ void trap_tyball_death(uw_motion *m) {
  * the argument plus one, and bit 9 of its +0xd. */
 static int tyball_orb_cb(uw_motion *m, uint16_t obj, int16_t arg) {
     uint8_t *ls = m->lseg;
-    ls[(uint16_t)(obj + 8)] = (uint8_t)(ls[(uint16_t)(obj + 8)] / (arg ? arg : 1) + 1);
+    if (!m->god_mode || obj != rw(m->ds, TRACKED_OBJECT))
+        ls[(uint16_t)(obj + 8)] = (uint8_t)(ls[(uint16_t)(obj + 8)] / (arg ? arg : 1) + 1);
     ww(ls, (uint16_t)(obj + 0xd), (uint16_t)(rw(ls, (uint16_t)(obj + 0xd)) | 0x200));
     return 0;
 }

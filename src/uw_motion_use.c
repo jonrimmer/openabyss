@@ -24,6 +24,7 @@ const char *ds_text(uw_motion *m, uint16_t at, char *buf, size_t cap) {
 void effect_nonlethal_damage(uw_motion *m, uint16_t obj, int16_t dice) {
     uint8_t *ls = m->lseg;
     int8_t d;
+    if (m->god_mode && obj == rw(m->ds, TRACKED_OBJECT)) return;
     if (((rw(ls, obj) & 0x1c0) >> 6) != 1) return;
     d = (int8_t)roll_dice(m, dice, 8);
     if (ls[(uint16_t)(obj + 8)] <= 3) return;

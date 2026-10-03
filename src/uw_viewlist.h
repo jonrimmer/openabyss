@@ -56,6 +56,7 @@
 #include "uw.h"
 
 #define UW_VL_LIST0 0x73f2         /* where every captured live list begins */
+#define UW_VL_LIST_END 0xb000      /* texture records and art tables follow */
 #define UW_VL_ART   116            /* art slots gr_map_art_page indexes */
 
 typedef struct {
@@ -75,6 +76,8 @@ typedef struct {
     const uint8_t *art[UW_VL_ART]; /* each art slot's pixels, NULL if unloaded */
     const uint8_t *shade;          /* the 16 x 256 shade table */
     uint16_t       frustum_half_angle; /* host override; zero: original 0x2040 */
+    int            full_bright;    /* host: bypass the darkness cutoff */
+    int            bright_radius;  /* host visibility budget; zero: 15 tiles */
     int            spans;          /* compute view_column_array -- the light
                                     * map from the shades radius, then
                                     * uw_vl_spans as view_render does --
@@ -94,6 +97,7 @@ typedef struct {
     /* ---- what it writes ----------------------------------------------- */
     uint8_t        list[0x10000];  /* addressed as 5723 */
     uint16_t       ptr;            /* draw_list_ptr */
+    int            list_overflow;  /* generated code reached the raster tables */
     uint8_t        automap[0x1000];/* automap_tiles, marked */
     long           newly_seen;     /* automap_newly_seen */
 

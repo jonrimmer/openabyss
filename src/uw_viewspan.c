@@ -378,7 +378,12 @@ void uw_vl_spans(uw_vl *v) {
  * whenever the level's shading changes; nothing calls it per frame, which is
  * why the traversal keeps the nibble it finds. */
 void uw_vl_light_map(uw_vl *v, int radius) {
-    uw_light_map_build(v->mem, radius, v->lprm);
+    /* The light nibble also selects texture detail and its coordinate
+     * scale. Preserve the distance ramp in full bright mode; the identity
+     * colour table bypasses shading separately. Extend only the cutoff,
+     * retaining a dark boundary around the 33 x 17 traversal grid. */
+    uw_light_map_build(v->mem, v->full_bright
+        ? (v->bright_radius > 0 ? v->bright_radius : 15) : radius, v->lprm);
 }
 
 void uw_light_map_build(uint8_t *mem, int radius, const uint8_t *lprm) {

@@ -406,6 +406,18 @@ void uw_scene_sway(uw_scene *s, int on, int16_t height, int16_t heading,
 
 static int16_t rs(const uint8_t *m, uint32_t at) { return (int16_t)rw(m, at); }
 
+static const uint8_t *scene_light(const uw_scene *s) {
+    static uint8_t identity[0x1000];
+    int i;
+    if (!s->full_bright) return s->light;
+    if (!identity[1])
+        for (i = 0; i < (int)sizeof identity; i++) identity[i] = (uint8_t)i;
+    /* Every light level preserves the source colour, including sprites,
+     * flat distant faces and both texture mappers. Keep the game's ramp
+     * intact for fades and for restoring normal rendering. */
+    return identity;
+}
+
 /* The executor's view of the rasteriser's memory at the start of a run: what
  * rast_execute's setup computed, every draw; what the last frame left, the
  * first time only -- the executor carries it after that, as the original's
@@ -426,7 +438,7 @@ static void dl_frame_words(uw_scene *s) {
     m->proj.off_y = rs(r, 0x26b6);
     m->depth_sub = s->rf.depth_op == 0x2b;
     m->depth_index = s->rf.depth_axis / 2;
-    m->light = s->light;
+    m->light = scene_light(s);
     m->light_params.scale = rw(s->gfx, 0x64c);
     m->light_params.bias_b = rs(s->gfx, 0x64e);
     m->light_params.bias_a = rs(s->gfx, 0x650);
@@ -521,7 +533,9 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
     v->clock = 0;
     v->lprm = s->gfx + 0x64c;
     for (i = 0; i < UW_VL_ART && i < UW_DL_TEX; i++) v->art[i] = s->tex[i];
-    v->shade = s->light;
+    v->shade = scene_light(s);
+    v->full_bright = s->full_bright;
+    v->bright_radius = 15;
     /* the pick map's replay keeps the draw's camera and column array */
     v->frustum_half_angle = 0;
     if (s->output_width > 0 && s->output_height > 0) {
@@ -535,10 +549,18 @@ static long scene_render(uw_scene *s, const uw_fb *fb, int pick) {
         v->ds = s->ds;
         v->vstate = s->priv + 0x970;
     }
-    v->objects = v->deferred = v->unsupported = v->object_tiles = 0;
-    v->newly_seen = 0;                      /* automap_newly_seen, cleared before the sweep */
-    memcpy(v->automap, s->ds + 0x3820, sizeof v->automap);
-    end = uw_vl_build(v);
+    for (;;) {
+        v->objects = v->deferred = v->unsupported = v->object_tiles = 0;
+        v->newly_seen = 0;
+        memcpy(v->automap, s->ds + 0x3820, sizeof v->automap);
+        end = uw_vl_build(v);
+        if (!v->list_overflow) break;
+        /* A wider visibility radius can make generated code run into the
+         * texture records and sprite art tables at 0xb000. Rebuild from
+         * the untouched scene with fewer rows, before copying any bytes. */
+        if (pick || !s->full_bright || v->bright_radius <= 1) return -1;
+        v->bright_radius--;
+    }
     memcpy(s->ds, v->mem, sizeof s->ds);
     memcpy(s->ds + 0x3820, v->automap, sizeof v->automap);
     s->unsupported += v->unsupported;

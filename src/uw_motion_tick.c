@@ -688,6 +688,10 @@ void player_death(uw_motion *m) {
     uint32_t exp;
     int16_t st;
     enum { BP = 0x9568 };                   /* player_death's frame under the tick's */
+    if (m->god_mode) {
+        if (!ls[(uint16_t)(pl + 8)]) ls[(uint16_t)(pl + 8)] = 1;
+        return;
+    }
     if (ds[(uint16_t)(rec + 0x6d)] == 0) { ls[(uint16_t)(pl + 8)] = 4; return; }
     sound_effect_stop_all(m);
     load_xmi(m, 10, 1);                     /* the death's own music */
@@ -787,6 +791,7 @@ void player_fall_damage(uw_motion *m) {
     uint16_t pl = rw(ds, TRACKED_OBJECT);
     uint8_t hp = ls[(uint16_t)(pl + 8)];
     int done = 0;
+    if (m->god_mode) return;
     m->screen_flash = 1;
     m->screen_flash_colour = 0xb5;
     if (hp < 0x65) {

@@ -97,6 +97,8 @@ static uint16_t gr_sizes(const char *dir, const char *const *files, int nfiles, 
 uw_scene *sc;
 static int sc_opened;
 static int non_affine; /* 0: host preference, retained across game modes */
+static int widescreen = 1; /* immersive view follows the window by default */
+static int full_bright; /* host lighting preference, retained across game modes */
 /* A place this build looks for the game's files before the player's own
  * configuration (-DUW_GAME_DIR_FALLBACK=\"DIR\"); "." when it names none. */
 #ifndef UW_GAME_DIR_FALLBACK
@@ -291,10 +293,11 @@ static void scene_camera(uw_motion *m) {
     if (m->render.masks) { uw_scene_masks(sc, m->render.mask); m->render.masks = 0; }
     if (m->render.shade) { uw_scene_shade_blank(sc, m->render.shade == 1); m->render.shade = 0; }
     if (m->render.floors) { uw_scene_floors(sc, ds + 0x717c); m->render.floors = 0; }
-    sc->output_width = m->immersive ? m->view_output_width : 0;
-    sc->output_height = m->immersive ? m->view_output_height : 0;
+    sc->output_width = m->immersive ? (widescreen ? m->view_output_width : 4) : 0;
+    sc->output_height = m->immersive ? (widescreen ? m->view_output_height : 3) : 0;
     sc->hide_overlay = m->immersive;
     sc->non_affine = non_affine;
+    sc->full_bright = full_bright;
     if (sc->view_width != (m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W)) sc->drawn = 0;
     sc->view_width = m->immersive ? UW_IMMERSIVE_W : UW_VIEW_W;
     sc->view_height = m->immersive ? UW_IMMERSIVE_H : UW_VIEW_H;
@@ -702,6 +705,7 @@ static void show_immersive(const uint8_t *view, const uint8_t *pal,
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
     }
     SDL_UpdateTexture(tex, NULL, frame, 640 * 4);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderTexture(ren, tex, NULL, NULL);
     SDL_RenderPresent(ren);
@@ -828,10 +832,19 @@ static void set_mode(uw_shell *sh, int mode);
 static const uw_shell_mode *mode_row(int number);
 static void title_screen(uw_shell *sh, const char *file, int palette);
 
+static void gameplay_presentation(uw_shell *sh) {
+    int pillarbox = sh->m.immersive && !widescreen;
+    if (sh->ren)
+        SDL_SetRenderLogicalPresentation(sh->ren, 320, pillarbox || present_aspect ? 240 : 200,
+            sh->m.immersive && widescreen ? SDL_LOGICAL_PRESENTATION_STRETCH
+                                         : SDL_LOGICAL_PRESENTATION_LETTERBOX);
+}
+
 /* Dialogs and other game modes retain their normal pointer and presentation.
  * The preference survives them, so closing one resumes the dungeon view. */
 static void immersive_sync(uw_shell *sh) {
     uw_motion *m = &sh->m;
+    if (sh->console.active) return;
     int active = sh->immersive && sh->have_game && sh->mode == MODE_DUNGEON
         && !sh->unfocused && !sh->options.active && !m->stack_ask
         && !m->mantra_ask && !m->yesno_ask && !m->instrument;
@@ -854,15 +867,125 @@ static void immersive_sync(uw_shell *sh) {
         SDL_SetWindowRelativeMouseMode(sh->win, active != 0);
         sh->relative = active;
     }
-    if (sh->ren)
-        SDL_SetRenderLogicalPresentation(sh->ren, 320, present_aspect ? 240 : 200,
-            active ? SDL_LOGICAL_PRESENTATION_STRETCH : SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    gameplay_presentation(sh);
     if (active) {
         uw_motion_enter_combat(m);
         uw_motion_cursor_move(m, 52 + UW_VIEW_W / 2, 68 + UW_VIEW_H / 2);
         ww(sh->ds, 0x0125, 0xffff); /* stop keypad cursor glide */
     }
     ww(sh->ds, 0x56aa, (uint16_t)(rw(sh->ds, 0x56aa) | 2));
+}
+
+static int console_available(const uw_shell *sh) {
+    return sh->have_game && (sh->mode == MODE_DUNGEON
+        || sh->mode == MODE_MAP || sh->mode == MODE_CONV);
+}
+
+static void console_toggle(uw_shell *sh) {
+    uw_motion *m = &sh->m;
+    enum { START = 320 * 160, BYTES = 320 * 40 };
+    if (!sh->console.active) {
+        uw_motion_cursor_hide(m);
+        memcpy(sh->console_scroll, sh->screen + START, BYTES);
+        if (m->screen_written) memcpy(sh->console_written, m->screen_written + START, BYTES);
+        uw_console_open(&sh->console);
+        sh->console_started = SDL_GetTicksNS();
+        if (sh->win && !sh->script) {
+            SDL_SetWindowRelativeMouseMode(sh->win, false);
+            SDL_StartTextInput(sh->win);
+            sh->relative = 0;
+        }
+        if (sh->ren)
+            SDL_SetRenderLogicalPresentation(sh->ren, 320, present_aspect ? 240 : 200,
+                                             SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    } else {
+        sh->console.active = 0;
+        memcpy(sh->screen + START, sh->console_scroll, BYTES);
+        if (m->screen_written) memcpy(m->screen_written + START, sh->console_written, BYTES);
+        /* Shift the wall-clock origin, so closing cannot catch up paused
+         * physics, NPC timers, poison or an attack's charging time. */
+        if (!sh->script) sh->t0 += SDL_GetTicksNS() - sh->console_started;
+        if (sh->win && !sh->script) {
+            SDL_StopTextInput(sh->win);
+            sh->relative = m->immersive && !sh->unfocused;
+            SDL_SetWindowRelativeMouseMode(sh->win, sh->relative != 0);
+        }
+        gameplay_presentation(sh);
+        uw_motion_cursor_show(m);
+    }
+    memset(sh->keybuf + rw(sh->ds, 0x2344), 0, 0x80);
+    sh->keybuf[rw(sh->ds, 0x2334)] = 0; /* Shift, Alt and Ctrl releases are captured too */
+    sh->keybuf[rw(sh->ds, 0x233c)] = 0;
+    sh->keybuf[rw(sh->ds, 0x2340)] = 0;
+    uw_motion_keyboard_drain(m);
+    m->buttons = 0;
+    m->immersive_forward = m->immersive_strafe = 0;
+    sh->context_click = sh->input_edge = sh->esc_edge = 0;
+    sh->look_x = sh->look_y = 0;
+    ww(sh->ds, 0x0115, 0xffff);
+    sh->ds[0x011d] = 0;
+    sh->console_changed = 1;
+}
+
+static void console_line(uw_shell *sh, const uint8_t *font, size_t size,
+                          const char *text, int x, int y, int width, uint8_t colour) {
+    char line[54];
+    size_t n;
+    snprintf(line, sizeof line, "%s", text);
+    n = strlen(line);
+    while (n && uw_motion_string_width(font, size, line) > width) line[--n] = 0;
+    uw_motion_draw_string(&sh->m, font, size, line, x, y, colour);
+}
+
+static void console_draw(uw_shell *sh) {
+    uw_motion *m = &sh->m;
+    const uint8_t *font = sh->scroll.font ? sh->scroll.font : m->font;
+    size_t size = sh->scroll.font ? sh->scroll.font_size : m->font_size;
+    int left = rw(sh->ds, UW_SCROLL_WINDOW + 4), right = rw(sh->ds, UW_SCROLL_WINDOW + 6);
+    int top = rw(sh->ds, UW_SCROLL_WINDOW), bottom = rw(sh->ds, UW_SCROLL_WINDOW + 2);
+    int height, x, y;
+    char field[56], head[56];
+    if (!font || size < 12) return;
+    height = rw(font, 6);
+    if (left < 0 || right > 319 || left >= right || top > 39 || bottom >= top) {
+        left = 15; right = 304; top = 30; bottom = 1;
+    }
+    if (3 * height > top - bottom + 1 && m->font_small && m->font_small_size >= 12) {
+        font = m->font_small; size = m->font_small_size; height = rw(font, 6);
+    }
+    memcpy(sh->screen + 320 * 160, sh->console_scroll, sizeof sh->console_scroll);
+    uw_motion_fill_rect(m, left, top, right, bottom, 0x2a);
+    console_line(sh, font, size, "Console (paused)", left, top, right - left, 0x2e);
+    console_line(sh, font, size, sh->console.message, left, top - height,
+                 right - left, 0x2e);
+    y = top - 2 * height;
+    snprintf(field, sizeof field, "> %s", sh->console.input);
+    console_line(sh, font, size, field, left, y, right - left, 0x2e);
+    snprintf(head, sizeof head, "> %.*s", sh->console.pos, sh->console.input);
+    x = left + uw_motion_string_width(font, size, head);
+    if (x < right && (SDL_GetTicksNS() / 500000000ull) % 2 == 0)
+        uw_motion_fill_rect(m, x, y - height + 1, x + 3 < right ? x + 3 : right,
+                             y - height + 1, 0x2e);
+}
+
+static void console_key(uw_shell *sh, const SDL_KeyboardEvent *event) {
+    int key = 0;
+    switch (event->scancode) {
+    case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER:
+        if (!event->repeat) key = '\r';
+        break;
+    case SDL_SCANCODE_BACKSPACE: key = '\b'; break;
+    case SDL_SCANCODE_DELETE: key = UW_CONSOLE_DELETE; break;
+    case SDL_SCANCODE_LEFT: key = UW_CONSOLE_LEFT; break;
+    case SDL_SCANCODE_RIGHT: key = UW_CONSOLE_RIGHT; break;
+    case SDL_SCANCODE_HOME: key = UW_CONSOLE_HOME; break;
+    case SDL_SCANCODE_END: key = UW_CONSOLE_END; break;
+    case SDL_SCANCODE_ESCAPE: console_toggle(sh); return;
+    default: break;
+    }
+    if (uw_console_key(&sh->console, key, &sh->m.god_mode, &non_affine,
+                       &widescreen, &full_bright))
+        ww(sh->ds, 0x56aa, (uint16_t)(rw(sh->ds, 0x56aa) | 2));
 }
 
 /* ---- the host's events into the driver's state ---- */
@@ -876,6 +999,7 @@ static void host_events(uw_shell *sh) {
      * instrument down must not skip the next cutscene) */
     sh->input_edge = 0;
     sh->esc_edge = 0;
+    sh->console_changed = 0;
     immersive_sync(sh);
     for (;;) {
         if (sh->script) {
@@ -895,6 +1019,26 @@ static void host_events(uw_shell *sh) {
         else if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) {
             uint8_t sc_ = sh->script ? (uint8_t)e.key.raw : xt_scan(e.key.scancode);
             int down = e.type == SDL_EVENT_KEY_DOWN;
+            /* SDL keycodes carry Unicode; Apple's section-sign key also
+             * occupies the usual console/grave-key position. */
+            if ((e.key.key == 0x00a7 || sc_ == 0x29)
+                && (sh->console.active || console_available(sh))) {
+                if (down && !e.key.repeat) console_toggle(sh);
+                continue;
+            }
+            /* Keep the host's fullscreen shortcut available in the console. */
+            if (!sh->script && e.key.scancode == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT)) {
+                if (down && !e.key.repeat) {
+                    sh->fullscreen = !sh->fullscreen;
+                    SDL_SetWindowFullscreen(sh->win, sh->fullscreen != 0);
+                }
+                continue;
+            }
+            if (sh->console.active) {
+                if (down) console_key(sh, &e.key);
+                continue;
+            }
+            if (sh->console_changed) continue;
             if (e.key.repeat) continue;
             if (sc_ == 0x0b && sh->have_game && sh->mode == MODE_DUNGEON
                 && !sh->options.active && !m->stack_ask && !m->mantra_ask
@@ -911,15 +1055,6 @@ static void host_events(uw_shell *sh) {
                 if (down) {
                     sh->immersive = !sh->immersive;
                     immersive_sync(sh);
-                }
-                continue;
-            }
-            /* Alt-Enter the host's, the window full screen and back: no key
-             * of the original's (its Alt-Enter is bound to nothing) */
-            if (!sh->script && e.key.scancode == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT)) {
-                if (down) {
-                    sh->fullscreen = !sh->fullscreen;
-                    SDL_SetWindowFullscreen(sh->win, sh->fullscreen != 0);
                 }
                 continue;
             }
@@ -943,10 +1078,13 @@ static void host_events(uw_shell *sh) {
                 keybuf[rw(ds, 0x2340)] = (uint8_t)((e.key.mod & SDL_KMOD_CTRL) != 0);
                 keybuf[rw(ds, 0x2338)] = (uint8_t)((e.key.mod & SDL_KMOD_CAPS) != 0);
             }
+        } else if (e.type == SDL_EVENT_TEXT_INPUT && sh->console.active) {
+            uw_console_text(&sh->console, e.text.text);
         } else if (e.type == SDL_EVENT_MOUSE_MOTION || e.type == SDL_EVENT_MOUSE_BUTTON_DOWN
                    || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             float fx, fy;
             int16_t x, y;
+            if (sh->console.active || sh->console_changed) continue;
             if (m->immersive) {
                 if (e.type == SDL_EVENT_MOUSE_MOTION) {
                     /* Raw physical deltas: sensitivity does not vary with the window size. */
@@ -1026,7 +1164,8 @@ static void host_events(uw_shell *sh) {
     /* cursor_update_position with the mouse still: the keyboard's glide,
      * and the host's pointer put where it took the cursor, so the mouse
      * goes on from there as the original's deltas would */
-    if (sh->have_game && !m->immersive && !moved && (int16_t)rw(ds, 0x0125) >= 0) {
+    if (!sh->console.active && !sh->console_changed && sh->have_game
+        && !m->immersive && !moved && (int16_t)rw(ds, 0x0125) >= 0) {
         uw_motion_cursor_glide(m);
         if (!sh->script && sh->win && sh->ren) {
             float wx, wy;
@@ -2377,7 +2516,7 @@ static void immersive_present(uw_shell *sh) {
     static uint8_t weapon[UW_VIEW_BYTES], mask[UW_VIEW_BYTES];
     static uint8_t view[UW_IMMERSIVE_BYTES];
     int x, y;
-    double aspect = sh->m.view_output_height > 0
+    double aspect = widescreen && sh->m.view_output_height > 0
         ? (double)sh->m.view_output_width / sh->m.view_output_height : 4.0 / 3.0;
     double original_aspect = (double)UW_VIEW_W / (UW_VIEW_H * 1.2);
     double scale_x = original_aspect / (aspect > 1.0 ? aspect : 1.0);
@@ -2662,12 +2801,26 @@ static void sound_after_restore(uw_shell *sh) {
 }
 
 /* ---- game_loop ---- */
+static void host_clock(uw_shell *sh) {
+    if (sh->console.active) return;
+    if (sh->script) sh->m.clock += 4;
+    else sh->m.clock = sh->clock0 + (uint32_t)((SDL_GetTicksNS() - sh->t0) * 256 / 1000000000ull);
+}
+
 static void game_loop(uw_shell *sh) {
     while (sh->running && (!sh->have_game || rw(sh->ds, 0x5666))) {   /* game_running (game_request_quit) */
         sh->waiting = rw(sh->ds, 0x011b) == 0xffff || sh->m.drag_wait;
-        if (sh->script) sh->m.clock += 4;
-        else sh->m.clock = sh->clock0 + (uint32_t)((SDL_GetTicksNS() - sh->t0) * 256 / 1000000000ull);
+        host_clock(sh);
         host_events(sh);
+        if (sh->console.active || sh->console_changed) {
+            if (sh->console.active) {
+                console_draw(sh);
+                show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
+            } else if (sh->m.immersive) immersive_present(sh);
+            else show(sh->screen, sh->pal, sh->frame, sh->tex, sh->ren);
+            pace(sh);
+            continue;
+        }
         if (!modal_pass(sh)) mode_row(sh->mode)->pass(sh);
         immersive_sync(sh);
         sound_timers(sh);
