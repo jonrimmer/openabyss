@@ -613,6 +613,11 @@ static int weapons_load_colourmap(uw_motion *m) {
     return 1;
 }
 
+void uw_motion_menu_restore_tail(uw_motion *m) {
+    weapons_load_colourmap(m);
+    weapon_stow(m);
+}
+
 void uw_motion_restore_tail(uw_motion *m, uint32_t clock) {
     uint8_t *ds = m->ds;
     weapons_load_colourmap(m);
@@ -954,9 +959,9 @@ int uw_motion_pending_teleport(uw_motion *m, uw_ark *ark, const uint8_t *terrain
 
 
 /* ==== leaving the dungeon and coming back: game_change_mode's pair for
- * row 0 of event_handlers -- dungeon_refresh_composite, the
+ * row 0 of event_handlers -- dungeon_leave_handler, the
  * leave, and dungeon_draw_main_screen, the enter -- with
- * dungeon_mode_teardown, viewport_bind_hotspots,
+ * viewport_unbind_hotspots, viewport_bind_hotspots,
  * dungeon_mode_leave, dungeon_mode_enter and
  * panel_mode_restore; and leaving the game,
  * game_return_to_menu and game_reset_player_state,
@@ -1002,11 +1007,11 @@ static void viewport_bind_hotspots(uw_motion *m, int16_t x, int16_t y, int16_t w
                                                                 cx2[grid[i].col], ry2[grid[i].row], grid[i].shape));
 }
 
-/* dungeon_mode_teardown: the view's hotspot unbound, its id cleared, and
+/* viewport_unbind_hotspots: the view's hotspot unbound, its id cleared, and
  * the eight arrow regions removed by their slots -- what view_set_viewport
  * registered, given back; dungeon_draw_main_screen runs it too, before it
  * registers them again. */
-static void dungeon_mode_teardown(uw_motion *m) {
+static void viewport_unbind_hotspots(uw_motion *m) {
     uint8_t *ds = m->ds;
     static const uint16_t order[8] = { 0x7284, 0x7366, 0x7286, 0x7368, 0x7362, 0x727e, 0x7360, 0x735c };
     int i;
@@ -1063,7 +1068,7 @@ static void dungeon_mode_enter(uw_motion *m, uint32_t clock) {
 
 void uw_motion_dungeon_leave(uw_motion *m) {
     uint8_t *ds = m->ds;
-    dungeon_mode_teardown(m);
+    viewport_unbind_hotspots(m);
     dungeon_mode_leave(m);
     /* panel_mode_restore: the panel shown made the panel wanted and up,
      * the flip's frame and the view switch cleared */
@@ -1073,14 +1078,14 @@ void uw_motion_dungeon_leave(uw_motion *m) {
     ds[VIEW_SWITCHING] = 0;
 }
 
-/* dungeon_mode_teardown alone: the view's hotspot
+/* viewport_unbind_hotspots alone: the view's hotspot
  * and the eight arrow cursor regions given back. view_set_viewport is what
  * registers them, from dungeon_draw_main_screen, so a program that has not
  * been in the dungeon yet -- the title, the character generation screen --
  * has none, and the cursor keeps the shape the menu pushed. The port's boot
  * makes a running game's state, this takes them off it. */
 void uw_motion_view_regions_unbind(uw_motion *m) {
-    dungeon_mode_teardown(m);
+    viewport_unbind_hotspots(m);
     /* and view_set_viewport's own first act, which the port's boot has
      * done for a running game: the title's captured states hold 0 here */
     m->ds[VIEW_VIEWPORT_DIRTY] = 0;
@@ -1089,7 +1094,7 @@ void uw_motion_view_regions_unbind(uw_motion *m) {
 void uw_motion_dungeon_viewport(uw_motion *m) {
     uint8_t *ds = m->ds;
     uint16_t mask = rw(ds, (uint16_t)(rw(ds, 0x00e2) + 8));
-    dungeon_mode_teardown(m);
+    viewport_unbind_hotspots(m);
     viewport_bind_hotspots(m, 0x34, 0xb4 - 0x71 + 1, 0xac, 0x71);
     /* view_set_viewport's tail: the flag cleared and set again
      * for an event whose mode mask has bit 0 and not bit 3 -- the

@@ -1270,7 +1270,9 @@ static int16_t bi_do_judgement(uw_convbi *b, uw_convvm *vm, uint16_t *top) {
  * quote marks in the NPC's window -- the interface's. AX, which CALLI
  * stores, is the expansion's segment: the text's own when there was nothing
  * to expand (the ring's, for a STRINGS.PAK string), farheap_free's when a
- * copy was freed, which this port does not model and counts. */
+ * copy was freed, which depends on the far heap's blocks and is counted.
+ * No UW1 conversation reaches the copy: its 53 calls of print each pass a
+ * literal string, and none of those has an '@'. */
 static int16_t bi_print(uw_convbi *b, uw_convvm *vm, uint16_t *top) {
     char *raw = get_string(b, (uint16_t)arg(vm, top, 1)), *e;
     if (!raw) return 0;

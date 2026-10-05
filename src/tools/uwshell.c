@@ -718,6 +718,19 @@ static void show_immersive(const uint8_t *view, const uint8_t *pal,
 static float logical_y(float screen_y) { return present_aspect ? screen_y * 240.0f / 200.0f : screen_y; }
 static float screen_y_of(float logical) { return present_aspect ? logical * 200.0f / 240.0f : logical; }
 
+/* the captured mouse's motion in whole screen pixels, the rest kept for the
+ * next event. A window larger than the screen moves the mouse a fraction of
+ * a pixel an event; adding that to the cursor and truncating the sum rounded
+ * every step up and to the left, so a slow drag down or right never moved
+ * and one up or left moved a whole pixel an event (openabyss issue 1) */
+static int drag_step(float *rest, float delta) {
+    int whole;
+    *rest += delta;
+    whole = (int)*rest;
+    *rest -= (float)whole;
+    return whole;
+}
+
 /* screen_fade_out and screen_fade_in, which the
  * frame asks for and cannot run: thirteen remaps of the work buffer through
  * the rasteriser's light table and a clear, a present after each
@@ -784,7 +797,7 @@ static void palette_fade_run(uw_motion *m, uint8_t *live, const uint8_t *target,
  * the palette faded out two steps, the page redrawn (the library's
  * uw_boot_draw_main_screen), palette_read(0) and the ramp back in. With
  * `enter` it is game_change_mode(1)'s enter handler, event_handlers[0][0],
- * and makes the bindings too: dungeon_mode_teardown and the view's
+ * and makes the bindings too: viewport_unbind_hotspots and the view's
  * (uw_motion_dungeon_viewport) before the fade, dungeon_mode_enter on the
  * new page (uw_motion_dungeon_enter). Either way the cursor is hidden first
  * and shown at the end, as the original's cursor_hide and cursor_show
@@ -864,7 +877,7 @@ static void immersive_sync(uw_shell *sh) {
     m->buttons = 0;
     sh->context_click = 0;
     sh->look_x = sh->look_y = 0;
-    sh->drag_fraction_x = sh->drag_fraction_y = 0;
+    sh->drag_fx = sh->drag_fy = 0;
     ww(sh->ds, 0x0115, 0xffff);
     sh->ds[0x011d] = 0;
     if (sh->win && !sh->script) {
@@ -926,7 +939,7 @@ static void console_toggle(uw_shell *sh) {
     m->immersive_forward = m->immersive_strafe = 0;
     sh->context_click = sh->input_edge = sh->esc_edge = 0;
     sh->look_x = sh->look_y = 0;
-    sh->drag_fraction_x = sh->drag_fraction_y = 0;
+    sh->drag_fx = sh->drag_fy = 0;
     ww(sh->ds, 0x0115, 0xffff);
     sh->ds[0x011d] = 0;
     sh->console_changed = 1;
@@ -1116,16 +1129,9 @@ static void host_events(uw_shell *sh) {
             if (!sh->script) fy = screen_y_of(fy);
             if (sh->relative && e.type == SDL_EVENT_MOUSE_MOTION) {
                 /* captured: the mouse's motion added to where the cursor
-                 * is. Retain subpixels after scaling, and truncate the signed
-                 * delta rather than the position so both directions agree. */
-                int dx, dy;
-                sh->drag_fraction_x += e.motion.xrel;
-                sh->drag_fraction_y += screen_y_of(e.motion.yrel);
-                dx = (int)sh->drag_fraction_x; dy = (int)sh->drag_fraction_y;
-                sh->drag_fraction_x -= (float)dx;
-                sh->drag_fraction_y -= (float)dy;
-                fx = (float)cursor_x(sh) + (float)dx;
-                fy = (float)(199 - cursor_y(sh)) + (float)dy;
+                 * is, as the driver's deltas are in the original */
+                fx = (float)((int16_t)rw(ds, 0x010e) + drag_step(&sh->drag_fx, e.motion.xrel));
+                fy = (float)(199 - (int16_t)rw(ds, 0x0110) + drag_step(&sh->drag_fy, screen_y_of(e.motion.yrel)));
             } else if (sh->relative) {
                 /* a button while captured: the host's hidden pointer is
                  * still where the grab began, so the press or release
@@ -1141,8 +1147,8 @@ static void host_events(uw_shell *sh) {
                 moved = 1;
             }
             /* Clipped motion must not carry over when leaving a boundary. */
-            if (fx < 0 || fx > 319 || cursor_x(sh) != x) sh->drag_fraction_x = 0;
-            if (fy < 0 || fy > 199 || cursor_y(sh) != y) sh->drag_fraction_y = 0;
+            if (fx < 0 || fx > 319 || cursor_x(sh) != x) sh->drag_fx = 0;
+            if (fy < 0 || fy > 199 || cursor_y(sh) != y) sh->drag_fy = 0;
             if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                 uint16_t mask = e.button.button == SDL_BUTTON_LEFT ? 1 : e.button.button == SDL_BUTTON_RIGHT ? 2 : 0;
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -1152,7 +1158,7 @@ static void host_events(uw_shell *sh) {
                     if (!sh->script && !sh->relative && x >= 52 && x < 224 && y >= 68 && y < 181) {
                         SDL_SetWindowRelativeMouseMode(sh->win, true);
                         sh->relative = 1;
-                        sh->drag_fraction_x = sh->drag_fraction_y = 0;
+                        sh->drag_fx = sh->drag_fy = 0;
                     }
                     m->buttons |= mask;
                     sh->input_edge |= 2;
@@ -1168,7 +1174,7 @@ static void host_events(uw_shell *sh) {
                         float wx, wy;
                         SDL_SetWindowRelativeMouseMode(sh->win, false);
                         sh->relative = 0;
-                        sh->drag_fraction_x = sh->drag_fraction_y = 0;
+                        sh->drag_fx = sh->drag_fy = 0;
                         if (SDL_RenderCoordinatesToWindow(sh->ren, (float)(int16_t)rw(ds, 0x010e),
                                                           logical_y((float)(199 - (int16_t)rw(ds, 0x0110))), &wx, &wy))
                             SDL_WarpMouseInWindow(sh->win, wx, wy);
@@ -2059,7 +2065,7 @@ static void cutscene_pass(uw_shell *sh) {
  * the font back, load_textures_and_doors when in game -- the scene keeps
  * its textures, so nothing to reload -- and the return: full screen from
  * the dungeon is game_change_mode(1), the dungeon's leave and enter
- * handlers (dungeon_refresh_composite and dungeon_draw_main_screen) over
+ * handlers (dungeon_leave_handler and dungeon_draw_main_screen) over
  * the page the interpreter cleared; from the menu nothing; from another
  * mode palette_load(0) and every event posted; in the view, the view
  * refreshed. */
@@ -2245,6 +2251,10 @@ static void dungeon_from_menu(uw_shell *sh) {
         /* game_return_to_menu's tail: the mode index back, the mode, the
          * ENTER handler -- dungeon_mode_enter */
         uw_motion_enter_game(&sh->m, sh->m.clock);
+        /* and what the left game's calls still owed, now that
+         * game_return_to_menu returns into them: options_click_row's
+         * cursor_show, when the death came inside a restore */
+        for (; sh->options.show_owed > 0; sh->options.show_owed--) uw_motion_cursor_show(&sh->m);
     } else {
         ww(ds, 0x565e, 1);
         ww(ds, 0x5664, 0);
@@ -2410,19 +2420,26 @@ static void menu_pass(uw_shell *sh) {
  * screen and loads palette 0; play_title_cutscene drains the keys held from
  * the prompt and plays cutscene 9; then main_menu(1), whose first act is
  * cutscene 0 when no save exists. Nothing waits: each screen stands for as
- * long as the loads after it take (game_init has no delay), so the port
- * holds them as long as the original does on a machine of fixed speed:
- * PRES1 from 0.07 s to 0.17, black to 0.21
- * (show_fullscreen_image's blank while pres2.byt loads), PRES2 to 0.33,
- * then black -- the rest of game_init and play_title_cutscene's open --
- * until the title's fade begins at 1.25 s. */
+ * long as the loads after it take (game_init has no delay). A machine of
+ * fixed speed with a fast disk shows PRES1 from 0.07 s to 0.17, black to
+ * 0.21 (show_fullscreen_image's blank while pres2.byt loads), PRES2 to
+ * 0.33, then black -- the rest of game_init and play_title_cutscene's open
+ * -- until the title's fade begins at 1.25 s. A scripted run keeps that
+ * timeline; played, each screen is held SPLASH_HOLD longer, about as long
+ * as the loads behind it took on a hard disk of the day. */
 enum {                                 /* from the program's start, in ticks */
     PRES1_AT = 18,                     /* 0.07 s: after gfx_init's mode set */
     PRES_BLANK_AT = 44,                /* 0.17 s */
     PRES2_AT = 54,                     /* 0.21 s */
     PRES_END_AT = 85,                  /* 0.33 s */
-    TITLE_AT = 320                     /* 1.25 s */
+    TITLE_AT = 320,                    /* 1.25 s */
+    SPLASH_HOLD = 512                  /* 2 s more on each screen, played */
 };
+
+/* when step `at` comes: past each screen already shown, its hold */
+static uint32_t title_at(const uw_shell *sh, uint32_t at, int screens_shown) {
+    return sh->script ? at : at + (uint32_t)screens_shown * SPLASH_HOLD;
+}
 
 static void title_screen(uw_shell *sh, const char *file, int palette) {
     char path[600];
@@ -2453,23 +2470,23 @@ static void title_pass(uw_shell *sh) {
         sh->title_step = 1;
         break;
     case 1:
-        if (m->clock - sh->clock0 < PRES_BLANK_AT) break;
+        if (m->clock - sh->clock0 < title_at(sh, PRES_BLANK_AT, 1)) break;
         memset(sh->screen, 0, 64000);                       /* show_fullscreen_image's blank */
         sh->title_step = 2;
         break;
     case 2:
-        if (m->clock - sh->clock0 < PRES2_AT) break;
+        if (m->clock - sh->clock0 < title_at(sh, PRES2_AT, 1)) break;
         title_screen(sh, "PRES2.BYT", 6);
         sh->title_step = 3;
         break;
     case 3:
-        if (m->clock - sh->clock0 < PRES_END_AT) break;
+        if (m->clock - sh->clock0 < title_at(sh, PRES_END_AT, 2)) break;
         memset(sh->screen, 0, 64000);                       /* screen_clear */
         title_screen(sh, "", 0);                            /* palette_load(0) */
         sh->title_step = 4;
         break;
     case 4:
-        if (m->clock - sh->clock0 < TITLE_AT) break;
+        if (m->clock - sh->clock0 < title_at(sh, TITLE_AT, 2)) break;
         uw_motion_cutscene_request(m, 9);                   /* play_title_cutscene */
         sh->title_step = 5;
         break;
@@ -2495,7 +2512,7 @@ static void title_pass(uw_shell *sh) {
 
 /* ---- the table ---- */
 
-/* event_handlers[0][15], dungeon_refresh_composite: game_change_mode's on
+/* event_handlers[0][15], dungeon_leave_handler: game_change_mode's on
  * the way to the automap or a conversation (src/uw_motion_save.c). */
 static void dungeon_leave(uw_shell *sh) { uw_motion_dungeon_leave(&sh->m); }
 

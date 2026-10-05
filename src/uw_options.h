@@ -42,6 +42,7 @@ typedef struct {
     uw_scroll_edit edit;           /* the description's editor (scroll_text_input) */
     int        quit;               /* game_request_quit: the game ends */
     int        restored;           /* a restore rebuilt the game: redraw */
+    int        show_owed;          /* options_click_row's cursor_show, still to come after a death in its handler */
     int        redraw;             /* the detail changed: view_rebuild_and_draw, screen_present now */
     long       not_carried;
 } uw_options;
@@ -70,7 +71,9 @@ void uw_options_click(uw_options *o, int16_t x, int16_t y, uint32_t clock);
 
 /* savegame_restore_progress(slot) as the title screen's Journey Onward runs
  * it (main_menu_save_list): the slot's files over SAVE0's and the game
- * rebuilt; 1 when it restored (`restored` is left set for the host's redraw). */
+ * rebuilt, then weapons_load_colourmap and main_menu's weapon_stow -- not
+ * the options panel's tail, whose tick waits for the game loop's event 12;
+ * 1 when it restored (`restored` is left set for the host's redraw). */
 int uw_options_restore(uw_options *o, int slot, uint32_t clock);
 
 #endif

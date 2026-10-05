@@ -387,8 +387,8 @@ void uw_motion_enter_game(uw_motion *m, uint32_t clock);
  * them, and after a full-screen cutscene played in the dungeon -- and
  * game_return_to_menu around the menu.
  *
- * `dungeon_leave` is the leave handler, dungeon_refresh_composite:
- * dungeon_mode_teardown -- the view's hotspot unbound and its
+ * `dungeon_leave` is the leave handler, dungeon_leave_handler:
+ * viewport_unbind_hotspots -- the view's hotspot unbound and its
  * eight arrow cursor regions removed -- dungeon_mode_leave -- the panel's
  * five hotspots unbound, music_stop -- and panel_mode_restore. The enter
  * handler is dungeon_draw_main_screen: `dungeon_viewport` is
@@ -411,7 +411,7 @@ void uw_motion_palette_rotate_range(uw_motion *m, uint8_t start, uint8_t count, 
  * dungeon_mode_enter does it for the original. Runs once (0x18a3). */
 void uw_motion_inventory_panel_init(uw_motion *m);
 
-/* dungeon_mode_teardown alone: the view's hotspot and its eight arrow
+/* viewport_unbind_hotspots alone: the view's hotspot and its eight arrow
  * cursor regions given back, for a program that has not been in the
  * dungeon yet. uw_motion_dungeon_viewport puts them back. */
 void uw_motion_view_regions_unbind(uw_motion *m);
@@ -600,6 +600,12 @@ int uw_motion_restore(uw_motion *m, const uint8_t *player_dat, size_t size, cons
  * liquid flag set and every event but the first posted. The weapon colour
  * map and the panel's elements are not carried. */
 void uw_motion_restore_tail(uw_motion *m, uint32_t clock);
+/* Journey Onward's after a restore, which is not the panel's:
+ * main_menu_save_list's weapons_load_colourmap and main_menu's weapon_stow
+ * -- no tick (the game loop's event 12 is the first), no movement mode, no
+ * liquid flag. A save made with the weapon drawn is stowed here, and the
+ * stow draws a random number. */
+void uw_motion_menu_restore_tail(uw_motion *m);
 /* set_render_detail: the record's detail nibble into the
  * renderer's flag and its two emitters. */
 void uw_motion_set_render_detail(uw_motion *m);

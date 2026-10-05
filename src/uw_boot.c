@@ -213,7 +213,7 @@ static int boot_region_add(uw_motion *m, uint16_t x1, uint16_t y1,
  * action_combat picks a swing from; these are the two calls that make
  * them. The hotspot half is in
  * the static table; the slots are kept where the teardown reads them
- * (dungeon_mode_teardown, src/uw_motion_save.c), and the way back into the
+ * (viewport_unbind_hotspots, src/uw_motion_save.c), and the way back into the
  * dungeon makes all of it again with the motion layer's own
  * viewport_bind_hotspots. */
 static void viewport_bind_cursor_regions(uw_motion *m, int x, int y, int w, int h) {

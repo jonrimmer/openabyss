@@ -42,6 +42,35 @@ static void cursor_rect_copy(uw_motion *m, int restore) {
     imgbuf_copy(m, area, cx - hx, cy + hy + 1, w, h + 1, restore);
 }
 
+/* The cursor's rectangle saved as cursor_rect_copy saves it, but only where
+ * it lies in the viewport, and from the viewport (`view`, `vw` x `vh`, row 0
+ * its bottom, on the screen from x `vx` with its row 0 on row `vbottom`),
+ * rows 1 up, the ones the screen shows: the rest of the save area, the
+ * frame's, keeps what it held. */
+static void cursor_rect_save_in_view(uw_motion *m, const uint8_t *view, int vx, int vbottom, int vw, int vh) {
+    uint8_t *ds = m->ds;
+    uint16_t area = m->cursor_areas[0];
+    int16_t cx = rs(ds, CURSOR_X), cy = rs(ds, CURSOR_Y), w = rs(ds, CURSOR_W), h = rs(ds, CURSOR_H);
+    int16_t hx = rs(ds, CURSOR_HOT_X), hy = rs(ds, CURSOR_HOT_Y);
+    int x = cx - hx, y = cy + hy + 1, b0 = x >> 2, nb = ((x + w - 1) >> 2) - b0 + 1, ri, i, pl;
+    if (!area || !m->vram) {
+        m->pixels_not_drawn++;
+        return;
+    }
+    for (ri = 0; ri <= h; ri++) {
+        int vy = vbottom - (199 - y + ri);
+        if (vy < 1 || vy >= vh) continue;
+        for (i = 0; i < nb; i++) {
+            uint32_t at = ((uint32_t)area + (uint32_t)(ri * nb + i)) * 4;
+            for (pl = 0; pl < 4; pl++) {
+                int sx = (b0 + i) * 4 + pl - vx;
+                if (sx < 0 || sx >= vw || at + pl >= 0x40000) continue;
+                m->vram[at + pl] = view[vy * vw + sx];
+            }
+        }
+    }
+}
+
 /* cursor_erase: with the cursor drawn, the background restored
  * over its rectangle; whether it was drawn. */
 static int cursor_erase(uw_motion *m) {
@@ -204,8 +233,9 @@ void uw_motion_weapon_composite(uw_motion *m, uint8_t *buf, uint8_t *bmask) {
  * across an edge, mode 1 and the cursor hidden on the screen unless the
  * event's mouse state is 1. Then with the cursor shown once,
  * cursor_blit_in_view: in mode 2 the rectangle under the cursor
- * saved from the viewport, in mode 1 with the mouse state 1 copied back into
- * it from the save area, and the shape drawn into the viewport, clipped to
+ * saved from the viewport, in mode 1 with the mouse state 1 the part of it
+ * inside the viewport saved too, the rest of the save area left as it was,
+ * and the shape drawn into the viewport, clipped to
  * it; shown more than once, the count down by one. The viewport onto the
  * screen at x 52, its rows 1..112 on rows 130..19 (gfx_blit_planar_to_screen), and
  * cursor_show_unclipped: in mode 1 with the mouse state not 1,
@@ -260,7 +290,7 @@ void uw_motion_view_present(uw_motion *m, const uint8_t *view, const uint8_t *ma
         const uint8_t *px;
         int aw, ah, i, j;
         if (ds[VIEW_MODE] == 2) cursor_rect_copy(m, 0);
-        else if (mouse == 1) cursor_rect_copy(m, 1);
+        else if (mouse == 1) cursor_rect_save_in_view(m, buf, VX, VTOP + VH - 1, VW, VH);
         if (ds[VIEW_MODE] == 2 || mouse == 1) ds[CURSOR_ON_SCREEN] = 1;
         px = art_image(m, rw(ds, CURSOR_SHAPE), &aw, &ah);
         if (!px) {

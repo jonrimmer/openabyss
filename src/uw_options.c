@@ -260,9 +260,11 @@ static void save_to_slot(uw_options *o, int slot, const char *desc) {
     print_message(m, ok ? 0xa5 : 0xa4);
 }
 
-/* savegame_restore_progress and save_or_restore_slot's tail: the slot's
- * files over SAVE0's, the game rebuilt, the panels and the mode. */
-static void restore_from_slot(uw_options *o, int slot, uint32_t clock) {
+/* savegame_restore_progress and, from the panel (`in_game`),
+ * save_or_restore_slot's tail: the slot's files over SAVE0's, the game
+ * rebuilt, the panels and the mode. The title's Journey Onward has none of
+ * the tail and prints neither of its messages. */
+static void restore_from_slot(uw_options *o, int slot, uint32_t clock, int in_game) {
     uw_motion *m = o->m;
     char dir[800], path[900];
     uw_blob pd, ark, bg;
@@ -297,7 +299,8 @@ static void restore_from_slot(uw_options *o, int slot, uint32_t clock) {
     uw_free(&pd);
     uw_free(&ark);
     uw_free(&bg);
-    if (!ok) { print_message(m, 0xa3); return; }
+    if (!ok) { if (in_game) print_message(m, 0xa3); return; }
+    if (!in_game) { uw_motion_menu_restore_tail(m); o->restored = 1; return; }
     /* save_or_restore_slot's tail: weapons_load_colourmap (the boot's),
      * dungeon_tick_update, the level-entered flag, the panels built, the
      * movement mode, the liquid flag, the events */
@@ -308,7 +311,7 @@ static void restore_from_slot(uw_options *o, int slot, uint32_t clock) {
 
 int uw_options_restore(uw_options *o, int slot, uint32_t clock) {
     o->restored = 0;
-    restore_from_slot(o, slot, clock);
+    restore_from_slot(o, slot, clock, 0);
     return o->restored;
 }
 
@@ -367,7 +370,7 @@ static void click_slots(uw_options *o, int row, uint32_t clock) {
     slot = 6 - row;
     if (rw(m->ds, PAGE) == PAGE_RESTORE) {
         if (!(enumerate(o, desc) & (1u << (slot - 1)))) print_message(m, 0xa1);
-        else restore_from_slot(o, slot, clock);
+        else restore_from_slot(o, slot, clock, 1);
         ww(m->ds, 0x268c, 0);
         weapon_stow(m);
         close_panel(o);
@@ -429,7 +432,12 @@ static void click_detail(uw_options *o, int row) {
 }
 
 /* options_click_row: the page's handler with the row, the
- * list area refilled */
+ * list area refilled. The handler runs with the cursor hidden, and a
+ * restore whose tick finds the Avatar dead never comes back to the show:
+ * player_death's game_return_to_menu(1) runs inside it, the title and all,
+ * and the show waits until the game is entered again and the calls unwind
+ * (`show_owed`, the shell's dungeon_from_menu) -- which is why the title
+ * after such a death has a visibility count of 0. */
 static void click_row(uw_options *o, int row, uint32_t clock) {
     uw_motion *m = o->m;
     uw_motion_cursor_hide(m);
@@ -441,7 +449,8 @@ static void click_row(uw_options *o, int row, uint32_t clock) {
     case PAGE_MAIN: click_main(o, row); break;
     default: break;
     }
-    uw_motion_cursor_show(m);
+    if (m->return_to_menu) o->show_owed++;
+    else uw_motion_cursor_show(m);
 }
 
 /* ---- the session ------------------------------------------------------------------ */
