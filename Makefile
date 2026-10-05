@@ -1,6 +1,9 @@
 # Builds ./openabyss from src/: C11 and SDL 3 (pkg-config sdl3).
 
 CC      ?= cc
+# GNU Make can mistake Emscripten's cmake/ directory on PATH for a program.
+# Let the shell resolve the executable and use its full path in both steps.
+CMAKE   ?= $(shell command -v cmake)
 CFLAGS  ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion
 SDL3_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL3_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
@@ -17,8 +20,8 @@ clean:
 
 # Requires an activated Emscripten SDK (emcmake on PATH).
 wasm:
-	emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-	cmake --build build/wasm --target wasm --parallel
+	emcmake "$(CMAKE)" -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+	"$(CMAKE)" --build build/wasm --target wasm --parallel
 
 serve-wasm:
 	python3 -m http.server 8080 --directory dist/web --bind 127.0.0.1
