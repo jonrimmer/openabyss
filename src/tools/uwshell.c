@@ -654,6 +654,19 @@ static void show(const uint8_t *screen, const uint8_t *pal, uint32_t *frame,
 static float logical_y(float screen_y) { return present_aspect ? screen_y * 240.0f / 200.0f : screen_y; }
 static float screen_y_of(float logical) { return present_aspect ? logical * 200.0f / 240.0f : logical; }
 
+/* the captured mouse's motion in whole screen pixels, the rest kept for the
+ * next event. A window larger than the screen moves the mouse a fraction of
+ * a pixel an event; adding that to the cursor and truncating the sum rounded
+ * every step up and to the left, so a slow drag down or right never moved
+ * and one up or left moved a whole pixel an event (openabyss issue 1) */
+static int drag_step(float *rest, float delta) {
+    int whole;
+    *rest += delta;
+    whole = (int)*rest;
+    *rest -= (float)whole;
+    return whole;
+}
+
 /* screen_fade_out and screen_fade_in, which the
  * frame asks for and cannot run: thirteen remaps of the work buffer through
  * the rasteriser's light table and a clear, a present after each
@@ -829,8 +842,8 @@ static void host_events(uw_shell *sh) {
             if (sh->relative && e.type == SDL_EVENT_MOUSE_MOTION) {
                 /* captured: the mouse's motion added to where the cursor
                  * is, as the driver's deltas are in the original */
-                fx = (float)(int16_t)rw(ds, 0x010e) + e.motion.xrel;
-                fy = (float)(199 - (int16_t)rw(ds, 0x0110)) + screen_y_of(e.motion.yrel);
+                fx = (float)((int16_t)rw(ds, 0x010e) + drag_step(&sh->drag_fx, e.motion.xrel));
+                fy = (float)(199 - (int16_t)rw(ds, 0x0110) + drag_step(&sh->drag_fy, screen_y_of(e.motion.yrel)));
             } else if (sh->relative) {
                 /* a button while captured: the host's hidden pointer is
                  * still where the grab began, so the press or release
@@ -854,6 +867,7 @@ static void host_events(uw_shell *sh) {
                     if (!sh->script && !sh->relative && x >= 52 && x < 224 && y >= 68 && y < 181) {
                         SDL_SetWindowRelativeMouseMode(sh->win, true);
                         sh->relative = 1;
+                        sh->drag_fx = sh->drag_fy = 0;
                     }
                     m->buttons |= mask;
                     sh->input_edge |= 2;

@@ -89,6 +89,7 @@ struct uw_shell {
     int            fullscreen;      /* --fullscreen, Alt-Enter */
     int            vsync;           /* 0 on (the default), -1 --no-vsync */
     int            relative;        /* the host's pointer captured while a button walks in the view */
+    float          drag_fx, drag_fy; /* the captured motion's part of a pixel not yet moved */
     int            objcheck;        /* --objcheck: objcheck_run over each level entered */
     uint16_t       objcheck_level;
     uw_talk        talk;
