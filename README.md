@@ -5,6 +5,7 @@ You probably want the [original project](https://github.com/cimmerianpit/openaby
 This is a personal fork with a few buggy, vibed-coded features:
 
  - macOS build
+ - Browser build
  - "Immersive" mode, toggled by tab that hides the UI and controls a bit
    more like a modern FPS - WASD, left MB to attack, right MB to use.
  - Console, toggled by §, supporting handful of commands:

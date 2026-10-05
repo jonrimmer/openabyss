@@ -63,6 +63,9 @@
 #include "uwshell.h"
 #include "../uw_gamedir.h"
 #include <SDL3/SDL_main.h>     /* main as the entry point on every platform, WinMain included */
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include <sys/stat.h>
 #include <math.h>
@@ -2631,9 +2634,15 @@ static void present(uw_shell *sh) {
  * run ends with its script. */
 static void pace(uw_shell *sh) {
     if (!sh->script) {
+#ifdef __EMSCRIPTEN__
+        /* Yield even with --pace 0: the browser must process input, audio
+         * and paint between passes. Asyncify preserves the modal stack. */
+        emscripten_sleep(present_pace_ms > 0 ? (unsigned)present_pace_ms : 1);
+#else
         uint64_t now = SDL_GetTicksNS();
         uint64_t least = (uint64_t)present_pace_ms * 1000000ull;
         if (now - sh->pass_start < least) SDL_DelayNS(least - (now - sh->pass_start));
+#endif
         sh->pass_start = SDL_GetTicksNS();
     } else if (harness_script_over(sh)) {
         sh->running = 0;
@@ -2986,8 +2995,16 @@ int main(int argc, char **argv) {
         else return usage();
     }
     if (scale < 1) return usage();
+#ifdef __EMSCRIPTEN__
+    /* The launcher imports a folder before calling main. Native dialogs
+     * wait synchronously and cannot choose a browser filesystem folder. */
+    (void)locate;
+    if (!find_game_dir(dir_given, 0, 0)) return 1;
+    check_release(0);
+#else
     if (!find_game_dir(dir_given, !sh->script, locate)) return 1;
     check_release(!sh->script);
+#endif
     {
         /* THE SOUND IS THE HOST'S, AND IT PLAYS. The original
          * takes it from DATA/UW.CFG -- a music driver played here as the

@@ -15,4 +15,12 @@ openabyss: $(SRC) $(HEADERS)
 clean:
 	rm -f openabyss
 
-.PHONY: clean
+# Requires an activated Emscripten SDK (emcmake on PATH).
+wasm:
+	emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+	cmake --build build/wasm --target wasm --parallel
+
+serve-wasm:
+	python3 -m http.server 8080 --directory dist/web --bind 127.0.0.1
+
+.PHONY: clean wasm serve-wasm

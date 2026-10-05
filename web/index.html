@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenAbyss</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="openabyss.js" defer></script>
+  <script src="launcher.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><h1>OpenAbyss</h1><span>Ultima Underworld · WebAssembly</span></header>
+    <section id="setup" aria-label="Game setup">
+      <p>Choose the folder from your copy of Ultima Underworld containing <strong>UW.EXE</strong>,
+        <strong>DATA</strong>, <strong>CRIT</strong>, <strong>CUTS</strong> and <strong>SOUND</strong>.
+        Files stay on your computer. You choose them again each time you open this page.</p>
+      <label class="folder">Game folder <input id="files" type="file" webkitdirectory multiple disabled></label>
+      <label><input id="sound" type="checkbox" checked> Sound and music</label>
+      <button id="start" disabled>Play</button>
+    </section>
+    <p id="status" role="status">Loading WebAssembly…</p>
+    <canvas id="canvas" width="960" height="720" tabindex="0" aria-label="OpenAbyss game"></canvas>
+    <nav aria-label="Game controls">
+      <button id="fullscreen" disabled>Fullscreen</button>
+      <button id="backup" disabled>Download save backup</button>
+      <label class="folder">Restore save backup <input id="restore" type="file" accept=".json,application/json" disabled></label>
+    </nav>
+    <p class="help">Click the game to focus. Tab toggles immersive mode: WASD to move,
+      left mouse to attack, right mouse to use. Escape releases the pointer.
+      Saves stay in this browser for this site; download a backup before clearing browser storage.
+      Restore backups before pressing Play. A desktop keyboard and mouse are required.</p>
+    <details><summary>Game log</summary><pre id="log"></pre></details>
+  </main>
+</body>
+</html>
